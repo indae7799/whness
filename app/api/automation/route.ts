@@ -87,6 +87,14 @@ export async function POST(req: Request) {
                 return NextResponse.json({ error: "No IDs provided" }, { status: 400 })
             }
 
+            const siteUrl = process.env.WORDPRESS_URL!
+            const username = process.env.WORDPRESS_USERNAME!
+            const appPassword = process.env.WORDPRESS_APP_PASSWORD!
+
+            if (!siteUrl || !username || !appPassword) {
+                return NextResponse.json({ error: "WordPress credentials not configured" }, { status: 500 })
+            }
+
             const results = []
             for (const id of publishIds) {
                 try {
@@ -99,17 +107,26 @@ export async function POST(req: Request) {
                     const uploadedImages: any[] = []
                     for (const img of (article.images as any[])) {
                         try {
-                            const wpImage = await uploadImageToWordPress(img.url, img.altText) as any
-                            if (wpImage && wpImage.id) {
-                                uploadedImages.push({ ...img, wpMediaId: wpImage.id });
+                            const wpMediaId = await uploadImageToWordPress({
+                                siteUrl,
+                                username,
+                                appPassword,
+                                imageUrl: img.url,
+                                altText: img.altText || article.title
+                            })
+
+                            if (wpMediaId) {
+                                uploadedImages.push({ ...img, wpMediaId });
                             }
                         } catch (imgErr) {
                             console.error("Image upload failed, skipping", imgErr)
                         }
                     }
 
-                    // @ts-ignore
                     const wpPost = await publishToWordPress({
+                        siteUrl,
+                        username,
+                        appPassword,
                         title: article.title,
                         content: article.content,
                         status: 'publish',
