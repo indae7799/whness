@@ -50,6 +50,13 @@ export const ThumbnailGenerator = forwardRef<ThumbnailGeneratorRef, ThumbnailGen
         if (defaultTitle) setTitle(defaultTitle)
     }, [defaultTitle])
 
+    // Redraw canvas whenever image or title changes (Fixes Draft Restoration)
+    useEffect(() => {
+        if (image || title) {
+            drawCanvas();
+        }
+    }, [image, title, isDarkText]);
+
     const handleFile = (file: File) => {
         if (file && file.type.startsWith('image/')) {
             const reader = new FileReader()
