@@ -1,0 +1,329 @@
+// Prisma Schema for AI-Powered SEO Blog Auto-Publishing Platform
+// Based on PRD Section 8: Data Models
+
+generator client {
+  provider = "prisma-client-js"
+  engineType = "binary"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model: 사용자 계정 정보
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  passwordHash  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  wordpressSites WordPressSite[]
+  articles       Article[]
+  usageStats     UsageStats?
+  subscription   Subscription?
+  automationJobs AutomationJob[]
+  automationConfig AutomationConfig?
+}
+
+// Subscription model: 구독 정보 (Free/Pro/Agency/Enterprise)
+model Subscription {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  tier          String   // "free" | "pro" | "agency" | "enterprise"
+  status        String   // "active" | "canceled" | "expired"
+  
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// WordPressSite model: WordPress 사이트 연결 정보
+model WordPressSite {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  siteUrl       String
+  siteName      String
+  username      String
+  appPassword   String   @db.Text // 암호화된 상태로 저장
+  
+  isActive      Boolean  @default(true)
+  lastSync      DateTime?
+  
+  articles      Article[]
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+// ResearchJob model: 키워드 리서치 작업
+model ResearchJob {
+  id            String   @id @default(cuid())
+  userId        String
+  
+  seeds         Json     // string[] - 시드 키워드 목록
+  sources       Json     // string[] - 리서치 소스 목록
+  persona       Json     // Persona object - 페르소나 정보
+  
+  status        String   // "pending" | "running" | "completed" | "failed"
+  progress      Int      @default(0) // 0-100
+  currentTask   String?
+  
+  // Results
+  keywords      Keyword[]
+  researchData  Json?    // { reddit: [...], trends: [...], ... }
+  
+  startedAt     DateTime?
+  completedAt   DateTime?
+  error         String?
+  
+  article       Article?
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([userId, status])
+  @@index([createdAt])
+}
+
+// Keyword model: 리서치 결과 키워드
+model Keyword {
+  id            String   @id @default(cuid())
+  researchJobId String
+  researchJob   ResearchJob @relation(fields: [researchJobId], references: [id], onDelete: Cascade)
+  
+  phrase        String
+  score         Float
+  searchVolume  Int?
+  competition   Float
+  relevance     Float
+  trending      String   // "increasing" | "stable" | "decreasing"
+  
+  // Metrics
+  redditPosts   Int      @default(0)
+  sePosts       Int      @default(0)
+  snippetChance Float    @default(0)
+  
+  selected      Boolean  @default(false)
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([researchJobId, score])
+  @@index([phrase])
+}
+
+// Article model: 생성된 블로그 글
+model Article {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  siteId        String?
+  site          WordPressSite? @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  
+  researchJobId String?   @unique
+  researchJob   ResearchJob? @relation(fields: [researchJobId], references: [id], onDelete: Cascade)
+  
+  // Content
+  title         String
+  slug          String
+  content       String   @db.Text
+  focusKeyword  String
+  metaTitle     String
+  metaDesc      String
+  
+  // Structure
+  wordCount     Int
+  h2Count       Int
+  h3Count       Int
+  keywordDensity Float
+  
+  // Images
+  images        Image[]
+  
+  // SEO
+  rankMathScore Int?
+  estimatedScore Int
+  
+  // Publishing
+  status        String   // "draft" | "scheduled" | "published" | "failed"
+  scheduledFor  DateTime?
+  publishedAt   DateTime?
+  wpPostId      Int?
+  wpPostUrl     String?
+  error         String?
+  
+  // Metadata
+  persona       Json
+  referenceInfo Json?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([userId, status])
+  @@index([createdAt])
+}
+
+// Image model: 생성된 이미지
+model Image {
+  id            String   @id @default(cuid())
+  articleId     String
+  article       Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  
+  type          String   // "featured" | "section" | "infographic"
+  url           String
+  path          String?
+  altText       String
+  prompt        String   @db.Text
+  revisedPrompt String?  @db.Text
+  
+  wpMediaId     Int?
+  position      String   // "after_h1" | "after_h2_0" | etc.
+  
+  width         Int?
+  height        Int?
+  size          Int?     // bytes
+  format        String?  // "webp" | "png" | "jpg"
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([articleId])
+}
+
+// UsageStats model: 사용량 통계
+model UsageStats {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Quotas (reset monthly)
+  articlesThisMonth Int   @default(0)
+  articlesLimit     Int   @default(5) // 플랜별
+  
+  imagesThisMonth   Int   @default(0)
+  imagesLimit       Int   @default(5)
+  
+  // Cumulative usage
+  totalArticles     Int   @default(0)
+  totalImages       Int   @default(0)
+  totalWordCount    Int   @default(0)
+  
+  // Cost tracking (for analytics)
+  costThisMonth     Float @default(0)
+  
+  lastResetAt       DateTime @default(now())
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// CostLog model: API 비용 로그
+model CostLog {
+  id            String   @id @default(cuid())
+  userId        String
+  
+  type          String   // "gpt-4o" | "dall-e-3"
+  model         String?  // "gpt-4o" | "dall-e-3-standard" | "dall-e-3-hd"
+  
+  inputTokens   Int?
+  outputTokens  Int?
+  
+  cost          Float
+  
+  articleId     String?
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([userId, createdAt])
+  @@index([type])
+}
+
+// AutomationJob model: 자동화 작업 (Auto Mode)
+model AutomationJob {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  articlesCount Int
+  publishType   String   // "immediate" | "scheduled"
+  scheduleInterval Int?   // minutes
+  category      String?  // null = auto
+  
+  status        String   // "pending" | "running" | "completed" | "failed"
+  progress      Int      @default(0) // 0-100
+  
+  articlesGenerated  Int @default(0)
+  articlesPublished  Int @default(0)
+  articlesFailed     Int @default(0)
+  
+  totalCost     Float    @default(0)
+  
+  startedAt     DateTime?
+  completedAt   DateTime?
+  error         String?
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([userId, status])
+  @@index([createdAt])
+}
+
+// Automation Settings Configuration
+model AutomationConfig {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  enabled       Boolean  @default(false)
+  frequency     String   // "daily" | "every-6-hours" | etc.
+  hour          Int      @default(9)
+  dayOfWeek     Int?     // 0-6 (Sunday = 0)
+  
+  articlesPerRun      Int  @default(5)
+  publishImmediately  Boolean @default(true)
+  scheduleInterval    Int?    // minutes
+  
+  // Strategies
+  seedStrategy     String  @default("weighted")
+  personaStrategy  String  @default("rotation")
+  
+  category        String  @default("medicare")
+  
+  lastRunAt       DateTime?
+  nextRunAt       DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AutomationLog {
+  id            String   @id @default(cuid())
+  userId        String
+  
+  articlesCreated  Int
+  articlesPublished Int
+  articlesFailed   Int
+  
+  totalCost     Float?
+  duration      Int?      // seconds
+  
+  errors        Json?
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([userId, createdAt])
+}

@@ -1,0 +1,21 @@
+=== MODEL TEST LOG ===
+
+Testing model: Qwen3 Coder 480B (Free) (qwen/qwen3-coder:free)...
+❌ FAILED: Qwen3 Coder 480B (Free) -> Rate Limit Hit
+
+Testing model: DeepSeek R1T Chimera (Free) (tngtech/deepseek-r1t-chimera:free)...
+❌ FAILED: DeepSeek R1T Chimera (Free) -> Rate Limit Hit
+
+Testing model: Gemma 3 27B (Free) (google/gemma-3-27b-it:free)...
+❌ FAILED: Gemma 3 27B (Free) -> Rate Limit Hit
+
+Testing model: Llama 4 Scout (Free) (meta-llama/llama-4-scout:free)...
+❌ FAILED: Llama 4 Scout (Free) -> Error: OpenRouter API Error: 404 - {"error":{"message":"No endpoints found for meta-llama/llama-4-scout:free.","code":404},"user_id":"user_37SGyfGRJvnIEnuPnP4UJGXbDIX"}
+
+Testing model: GPT-OSS 120B (Free) (openai/gpt-oss-120b:free)...
+❌ FAILED: GPT-OSS 120B (Free) -> Error: OpenRouter API Error: 404 - {"error":{"message":"No endpoints found matching your data policy (Free model publication). Configure: https://openrouter.ai/settings/privacy","code":404}}
+
+Testing model: Gemini 2.0 Flash Exp (Free) (google/gemini-2.0-flash-exp:free)...
+❌ FAILED: Gemini 2.0 Flash Exp (Free) -> Rate Limit Hit
+
+❌ ALL MODELS FAILED (Likely Account-wide Limit)
