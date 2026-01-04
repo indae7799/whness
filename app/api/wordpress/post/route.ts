@@ -67,10 +67,10 @@ export async function POST(req: Request) {
             bodyImageUrl = mediaData.source_url;
         }
 
-        // 3. Clean Content - Remove META info from beginning
+        // 3. Clean Content - Remove META info and Artifacts
         let finalContent = htmlContent;
 
-        // Remove META TITLE, META DESCRIPTION, FOCUS KEYWORD lines
+        // Remove META info
         finalContent = finalContent.replace(/META TITLE[^<\n]*/gi, "");
         finalContent = finalContent.replace(/META DESCRIPTION[^<\n]*/gi, "");
         finalContent = finalContent.replace(/FOCUS KEYWORD[^<\n]*/gi, "");
@@ -79,7 +79,11 @@ export async function POST(req: Request) {
         // Remove image prompt comments
         finalContent = finalContent.replace(/<!--\s*\[IMAGE_PROMPT_START\][\s\S]*?\[IMAGE_PROMPT_END\]\s*-->/g, "");
 
-        // Remove leading "..." or empty lines
+        // Remove Markdown artifacts ('''html, ''', ```html, ```)
+        finalContent = finalContent.replace(/^```html\s*/i, "").replace(/^```\s*/, "").replace(/```$/, "");
+        finalContent = finalContent.replace(/^'''html\s*/i, "").replace(/^'''\s*/, "").replace(/'''$/, "");
+
+        // Remove leading/trailing whitespace and dots
         finalContent = finalContent.replace(/^\s*\.\.\.\s*/gm, "");
         finalContent = finalContent.trim();
 
@@ -90,15 +94,17 @@ export async function POST(req: Request) {
             title = h1Match[1].replace(/<[^>]*>/g, "");
         }
 
-        // 5. Add 60px top margin to H1 (keep H1 in content!)
+        // 5. Enhance H1 Style (Margin + Font Family)
         if (h1Match) {
-            finalContent = finalContent.replace(
-                h1Match[0],
-                h1Match[0].replace("<h1", '<h1 style="margin-top: 60px;"')
+            // Add margin and force Cambria/Georgia font to match H2
+            const newH1 = h1Match[0].replace(
+                "<h1",
+                '<h1 style="margin-top: 60px; font-family: Cambria, Georgia, serif; font-weight: 700; line-height: 1.2;"'
             );
+            finalContent = finalContent.replace(h1Match[0], newH1);
         }
 
-        // 6. Inject Body Image AFTER first paragraph (intro)
+        // 6. Inject Body Image
         if (bodyImageUrl) {
             const imageHtml = `
                 <figure class="wp-block-image size-full" style="margin-top: 32px; margin-bottom: 32px;">
@@ -106,21 +112,26 @@ export async function POST(req: Request) {
                 </figure>
             `;
 
-            // Find first </p> after H1 (the intro paragraph)
+            // Strategy: Try to put it after the intro paragraph
             const introEndMatch = finalContent.match(/<\/h1>[\s\S]*?<\/p>/i);
+
             if (introEndMatch) {
                 const insertPosition = finalContent.indexOf(introEndMatch[0]) + introEndMatch[0].length;
                 finalContent = finalContent.slice(0, insertPosition) + imageHtml + finalContent.slice(insertPosition);
             } else if (finalContent.includes("[INSERT_IMAGE_HERE]")) {
+                // If no intro paragraph found but placeholder exists, use placeholder
                 finalContent = finalContent.replace("[INSERT_IMAGE_HERE]", imageHtml);
             } else {
-                // Fallback: after first paragraph
+                // Fallback: after first paragraph tag ending
                 const firstPEnd = finalContent.indexOf("</p>");
                 if (firstPEnd !== -1) {
                     finalContent = finalContent.slice(0, firstPEnd + 4) + imageHtml + finalContent.slice(firstPEnd + 4);
                 }
             }
         }
+
+        // ALWAYS remove the placeholder tag if it remains (e.g. if we used intro-matching instead)
+        finalContent = finalContent.replace("[INSERT_IMAGE_HERE]", "");
 
         // 7. Get blog category ID
         let blogCategoryId = 1; // Default to uncategorized
