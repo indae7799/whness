@@ -50,12 +50,7 @@ export const ThumbnailGenerator = forwardRef<ThumbnailGeneratorRef, ThumbnailGen
         if (defaultTitle) setTitle(defaultTitle)
     }, [defaultTitle])
 
-    // Redraw canvas whenever image or title changes (Fixes Draft Restoration)
-    useEffect(() => {
-        if (image || title) {
-            drawCanvas();
-        }
-    }, [image, title, isDarkText]);
+    // Base Redraw is handled by the useEffect near the drawCanvas definition
 
     const handleFile = (file: File) => {
         if (file && file.type.startsWith('image/')) {
@@ -89,25 +84,37 @@ export const ThumbnailGenerator = forwardRef<ThumbnailGeneratorRef, ThumbnailGen
         e.stopPropagation()
     }
 
+    const renderId = useRef(0)
+
     const drawCanvas = () => {
         const canvas = canvasRef.current
         if (!canvas) return
         const ctx = canvas.getContext("2d")
         if (!ctx) return
 
+        // Increment render ID to "cancel" previous async loads
+        const currentRenderId = ++renderId.current
+
+        // 0. Set Canvas Size (This also clears it)
         canvas.width = 1920
         canvas.height = 1080
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
 
         // 1. Draw Background
         if (image) {
             const img = new Image()
-            img.crossOrigin = "anonymous" // Enable CORS for Supabase/External URLs
+            img.crossOrigin = "anonymous"
             img.src = image
             img.onload = () => {
+                // If a newer render has started, abort this one
+                if (currentRenderId !== renderId.current) return
+
                 const ratio = Math.max(canvas.width / img.width, canvas.height / img.height)
                 const centerShift_x = (canvas.width - img.width * ratio) / 2
                 const centerShift_y = (canvas.height - img.height * ratio) / 2
 
+                // Important: Clear one more time right before drawing in sync with frame
+                ctx.clearRect(0, 0, canvas.width, canvas.height)
                 ctx.drawImage(img, 0, 0, img.width, img.height, centerShift_x, centerShift_y, img.width * ratio, img.height * ratio)
                 applyOverlayAndText(ctx, canvas.width, canvas.height)
             }
@@ -164,7 +171,7 @@ export const ThumbnailGenerator = forwardRef<ThumbnailGeneratorRef, ThumbnailGen
 
         const lineHeight = fontSize * 1.2
         const totalTextHeight = lines.length * lineHeight
-        let startY = height - totalTextHeight - 100
+        let startY = height - (totalTextHeight / 2) - 100 // Center adjustment
 
         lines.forEach((l, i) => {
             ctx.fillText(l.trim(), width / 2, startY + (i * lineHeight))
@@ -175,6 +182,7 @@ export const ThumbnailGenerator = forwardRef<ThumbnailGeneratorRef, ThumbnailGen
         ctx.fillText("WHNESS BLOG", width / 2, startY - 80)
     }
 
+    // Single source of drawing trigger
     useEffect(() => {
         drawCanvas()
     }, [image, title, isDarkText])

@@ -131,17 +131,18 @@ export default function KeywordGeneratorPage() {
 최종 결과물은 블로그에 즉시 붙여넣을 수 있도록 다음 스타일이 적용된 **HTML 코드 블록**으로 출력해주세요. 
 (Canvas 사용 가능 시 Canvas 우선)
 
-1. **타이포그래피 (Inline Style 적용 필수 - 가독성 최우선)**:
-   - **기본 폰트**: 본문은 무조건 \`font-family: Cambria, Georgia, serif\` (윈도우 가독성 최적화)를 사용하여 가독성을 높일 것.
+1. **타이포그래피 (Inline Style 적용 필수 - Georgia 서체 통일)**:
+   - **전체 문서에 Georgia 서체만 사용하세요. 다른 폰트(Helvetica 등)를 절대 섞지 마세요.**
    - **H1**: \`<h1 style="font-family: Georgia, 'Times New Roman', serif; font-size: 42px; font-weight: 700; color: #111827; margin-bottom: 32px; margin-top: 60px; letter-spacing: -0.02em; line-height: 1.2;">제목</h1>\`
-   - **H2**: \`<h2 style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 28px; font-weight: 700; color: #111827; margin-top: 48px; margin-bottom: 20px; letter-spacing: -0.01em; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">소제목</h2>\`
-   - **H3**: \`<h3 style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 22px; font-weight: 600; color: #1f2937; margin-top: 32px; margin-bottom: 16px;">세부 제목</h3>\`
-   - **본문**: \`<p style="font-family: Cambria, Georgia, serif; font-size: 18px; line-height: 1.75; margin-bottom: 28px; color: #2d3748;">\` (폰트 패밀리 반복 필수)
+   - **H2**: \`<h2 style="font-family: Georgia, 'Times New Roman', serif; font-size: 28px; font-weight: 700; color: #111827; margin-top: 48px; margin-bottom: 20px; letter-spacing: -0.01em; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">소제목</h2>\`
+   - **H3**: \`<h3 style="font-family: Georgia, 'Times New Roman', serif; font-size: 22px; font-weight: 600; color: #1f2937; margin-top: 32px; margin-bottom: 16px;">세부 제목</h3>\`
+   - **본문**: \`<p style="font-family: Georgia, 'Times New Roman', serif; font-size: 18px; line-height: 1.75; margin-bottom: 28px; color: #2d3748;">\` (폰트 패밀리 반복 필수)
 
 2. **구조 및 스타일 강제 규정 (매우 중요)**:
-   - **스타일 상속 금지**: \`div\`에 스타일을 줬더라도, 모든 \`<p>\`, \`<ul>\`, \`<li>\` 태그에 \`font-family: Cambria, Georgia, serif;\`를 **개별적으로 다시 작성**하세요. AI가 스타일을 까먹지 않게 하기 위함입니다.
+   - **서체 통일 필수**: 모든 태그(H1, H2, H3, p, ul, li)에 \`font-family: Georgia, 'Times New Roman', serif;\`를 **동일하게 적용**하세요.
    - 문단 사이에는 충분한 여백(margin-bottom: 28px)을 주어 읽기 편하게 하세요.
    - <strong> 태그 등을 활용하여 핵심 내용을 강조하세요.
+
 
 **[최종 지시사항: 잡담 금지]**
 - "네, 알겠습니다" 또는 "블로그 글을 작성해드리겠습니다" 같은 **불필요한 서론/인사말을 일체 생략하세요.**
@@ -533,24 +534,29 @@ export default function KeywordGeneratorPage() {
                 <DraftsManager
                     onRefreshNeeded={(fn) => setRefreshDrafts(() => fn)}
                     onRestore={async (draft) => {
-                        // 1. Set Title (Long-tail maps to title usually)
                         setTargetLongTailKeyword(draft.title);
-
-                        // 2. Set Content in Publisher
-                        // We need to pass this down. 
-                        // Note: Using a ref or state wrapper might be cleaner, but prop syncing works.
                         setInitialHtmlContent(draft.content);
-                        setEditorHtml(draft.content); // Sync editor state synchronously for prompt gen
+                        setEditorHtml(draft.content);
 
-                        // 3. Set Images
-                        // Featured (Thumbnail) -> ThumbnailGenerator
                         if (draft.images) {
-                            const featured = draft.images.find((img: any) => img.type === 'featured');
                             const body = draft.images.find((img: any) => img.type === 'section');
 
-                            if (featured) setInitialImageSrc(featured.url);
-                            if (body) setInitialBodyImageSrc(body.url);
+                            // Use raw/body image for ThumbnailGenerator (not featured, which already has text)
+                            if (body) {
+                                setInitialImageSrc(body.url); // Raw image goes to Thumbnail generator
+                                setInitialBodyImageSrc(body.url);
+                                // Also convert URL back to File for WordPressPublisher
+                                try {
+                                    const response = await fetch(body.url);
+                                    const blob = await response.blob();
+                                    const restoredFile = new File([blob], "restored-body.png", { type: blob.type });
+                                    setRawImageFile(restoredFile);
+                                } catch (e) {
+                                    console.error("Could not fully restore body image file object", e);
+                                }
+                            }
                         }
+                        alert("글감이 성공적으로 복구되었습니다. (이미지 포함)");
                     }}
                 />
             </div>

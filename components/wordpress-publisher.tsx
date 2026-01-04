@@ -108,10 +108,11 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
 
             if (res.ok) {
                 alert("성공적으로 저장되었습니다! (하단 저장 목록 확인)");
-                setResult({ success: true, link: "#drafts", error: undefined }); // Pseudo success
-                onDraftSaved?.(); // Refresh the drafts list
+                setResult({ success: true, link: "#drafts", error: undefined });
+                onDraftSaved?.();
             } else {
-                alert("저장 실패");
+                const errorData = await res.json();
+                alert(`저장 실패: ${errorData.error || "알 수 없는 오류"}`);
             }
         } catch (e) {
             console.error(e);

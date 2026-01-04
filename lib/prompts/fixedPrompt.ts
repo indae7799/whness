@@ -138,19 +138,19 @@ HTML OUTPUT FORMATTING (CRITICAL - INLINE CSS REQUIRED):
 You must output raw HTML code. Do NOT output Markdown.
 
 **Container Wrapper**:
-<div style="max-width: 740px; margin: 0 auto; font-family: Cambria, Georgia, 'Times New Roman', serif; line-height: 1.75; color: #1a202c;">
+<div style="max-width: 740px; margin: 0 auto; font-family: Georgia, 'Times New Roman', serif; line-height: 1.75; color: #1a202c;">
   <!-- All content here -->
 </div>
 
-**Typography Styles**:
-- **H1**: <h1 style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 36px; font-weight: 800; color: #000000; margin-bottom: 24px; margin-top: 0; letter-spacing: -0.02em; line-height: 1.2;">
-- **H2**: <h2 style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 28px; font-weight: 700; color: #111827; margin-top: 48px; margin-bottom: 20px; letter-spacing: -0.01em; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
-- **H3**: <h3 style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 22px; font-weight: 600; color: #1f2937; margin-top: 32px; margin-bottom: 16px;">
-- **Paragraphs**: <p style="font-size: 18px; line-height: 1.75; margin-bottom: 28px; color: #2d3748;">
-- **Lists**: <ul style="font-size: 18px; line-height: 1.75; margin-bottom: 28px; color: #2d3748; padding-left: 20px;"> (<li style="margin-bottom: 12px;">)
+**Typography Styles (MUST USE EXACTLY - Georgia Serif for all headings and body)**:
+- **H1**: <h1 style="font-family: Georgia, 'Times New Roman', serif; font-size: 42px; font-weight: 700; color: #111827; margin-bottom: 32px; margin-top: 60px; letter-spacing: -0.02em; line-height: 1.2;">
+- **H2**: <h2 style="font-family: Georgia, 'Times New Roman', serif; font-size: 28px; font-weight: 700; color: #111827; margin-top: 48px; margin-bottom: 20px; letter-spacing: -0.01em; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+- **H3**: <h3 style="font-family: Georgia, 'Times New Roman', serif; font-size: 22px; font-weight: 600; color: #1f2937; margin-top: 32px; margin-bottom: 16px;">
+- **Paragraphs**: <p style="font-family: Georgia, 'Times New Roman', serif; font-size: 18px; line-height: 1.75; margin-bottom: 28px; color: #2d3748;">
+- **Lists**: <ul style="font-family: Georgia, 'Times New Roman', serif; font-size: 18px; line-height: 1.75; margin-bottom: 28px; color: #2d3748; padding-left: 20px;"> (<li style="margin-bottom: 12px;">)
 - **Links**: <a href="..." style="color: #2563eb; text-decoration: underline; text-underline-offset: 4px; font-weight: 600;">
 - **Tables**:
-  <table style="width: 100%; border-collapse: collapse; margin: 32px 0; font-size: 17px;">
+  <table style="width: 100%; border-collapse: collapse; margin: 32px 0; font-size: 17px; font-family: Georgia, 'Times New Roman', serif;">
     <thead>
       <tr style="background-color: #f3f4f6; border-bottom: 2px solid #e5e7eb;">
         <th style="padding: 12px; text-align: left; font-weight: 600; color: #111827;">Header</th>
@@ -163,6 +163,8 @@ You must output raw HTML code. Do NOT output Markdown.
     </tbody>
   </table>
 - **Bold Text**: <strong style="font-weight: 700; color: #000000;">
+
+**IMPORTANT: Do NOT mix font families. Use Georgia serif consistently throughout the entire document.**
 
 HUMAN TOUCH (Override All Technical Rules):
 - Every section must feel lived-in

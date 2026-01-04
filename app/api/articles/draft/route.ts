@@ -1,146 +1,142 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
-    console.log("[API] Saving Draft...");
+    console.log("[API] Starting Draft Save...");
 
     try {
         const formData = await req.formData();
-
         const title = formData.get("title") as string || "Untitled Draft";
         const htmlContent = formData.get("htmlContent") as string;
-        const thumbnailFile = formData.get("thumbnailImage") as File; // The generated overlay image
-        const bodyImageFile = formData.get("bodyImage") as File; // The raw clean image
+        const thumbnailFile = formData.get("thumbnailImage") as File;
+        const bodyImageFile = formData.get("bodyImage") as File;
 
-        // 1. Get or Create Default User (Since this is a single-user tool mostly)
+        // 1. User Validation
         let user = await prisma.user.findFirst();
         if (!user) {
-            console.log("[API] No user found. Creating default admin user.");
             user = await prisma.user.create({
                 data: {
                     email: "admin@whness.com",
-                    passwordHash: "hashed_dummy_password",
+                    passwordHash: "admin_only_local",
                     name: "Admin",
                 }
             });
         }
 
-        // 2. Upload Images to Supabase Storage
-        const supabase = await createClient();
-        const bucketName = "whness-blog"; // Supabase Storage bucket
+        // 2. Extract SEO Metadata from HTML (Ensuring variables exist)
+        let focusKeyword = "Draft";
+        let metaDescription = "Draft auto-save";
 
-        // Helper to upload
-        const uploadToSupabase = async (file: File, path: string) => {
-            if (!file) return null;
+        if (htmlContent) {
+            const kwMatch = htmlContent.match(/FOCUS KEYWORD:\s*(.*)/i);
+            if (kwMatch) focusKeyword = kwMatch[1].trim();
 
+            const descMatch = htmlContent.match(/META DESCRIPTION:\s*(.*)/i);
+            if (descMatch) metaDescription = descMatch[1].trim();
+        }
+
+        // 3. Supabase Storage Setup (Safe Client)
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
+        const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "whness-blog";
+        const timestamp = Date.now();
+
+        const uploadFile = async (file: File, subDir: string) => {
+            if (!file || file.size === 0) return null;
+
+            const fileName = `${timestamp}-${file.name.replace(/\s/g, '_') || "image.png"}`;
+            const path = `${subDir}/${user!.id}/${fileName}`;
             const buffer = await file.arrayBuffer();
-            const { data, error } = await supabase
-                .storage
-                .from(bucketName)
-                .upload(path, buffer, {
-                    contentType: file.type,
-                    upsert: true
-                });
 
-            if (error) {
-                console.error(`[API] Storage Upload Error (${path}):`, error);
-                // Return null or throw? If bucket doesn't exist, this fails.
-                // We'll proceed without image if fails, but log it.
-                return null;
+            const { error: uploadError } = await supabase.storage.from(bucketName).upload(path, buffer, {
+                contentType: file.type || "image/png",
+                upsert: false
+            });
+
+            if (uploadError) {
+                console.error(`[API] Storage Error (${path}):`, uploadError.message);
+                throw new Error(`Supabase Storage Error: ${uploadError.message}. Check Bucket RLS/Policies.`);
             }
 
-            // Get Public URL
-            const { data: publicUrlData } = supabase
-                .storage
-                .from(bucketName)
-                .getPublicUrl(path);
-
+            const { data: publicUrlData } = supabase.storage.from(bucketName).getPublicUrl(path);
             return publicUrlData.publicUrl;
         };
 
-        const timestamp = Date.now();
-        let thumbnailUrl = "";
-        let bodyImageUrl = "";
+        // Upload and handle failures
+        let thumbnailUrl = null;
+        let bodyImageUrl = null;
 
-        if (thumbnailFile) {
-            const path = `thumbnails/${user.id}/${timestamp}-${thumbnailFile.name || 'thumb.png'}`;
-            const url = await uploadToSupabase(thumbnailFile, path);
-            if (url) thumbnailUrl = url;
+        try {
+            thumbnailUrl = await uploadFile(thumbnailFile, "thumbnails");
+            bodyImageUrl = await uploadFile(bodyImageFile, "raw");
+        } catch (e: any) {
+            return NextResponse.json({ error: e.message }, { status: 500 });
         }
 
-        if (bodyImageFile) {
-            const path = `raw/${user.id}/${timestamp}-${bodyImageFile.name || 'raw.png'}`;
-            const url = await uploadToSupabase(bodyImageFile, path);
-            if (url) bodyImageUrl = url;
-        }
-
-        // 3. Save Draft to Database (Prisma)
-        // We use the Article model with status = 'draft'
+        // 4. Database Transaction (Atomic)
         const article = await prisma.article.create({
             data: {
                 userId: user.id,
                 title: title,
-                slug: `draft-${timestamp}`, // Temporary slug
+                slug: `draft-${timestamp}`,
                 content: htmlContent || "",
-                focusKeyword: "Draft", // Placeholder
+                focusKeyword: focusKeyword,
                 metaTitle: title,
-                metaDesc: "Draft content",
+                metaDesc: metaDescription,
                 wordCount: 0,
                 h2Count: 0,
                 h3Count: 0,
                 keywordDensity: 0,
                 status: "draft",
                 estimatedScore: 0,
-                persona: {}, // Empty JSON
-
-                // Create Image relations if we have URLs
+                persona: {},
                 images: {
                     create: [
                         ...(thumbnailUrl ? [{
                             type: "featured",
                             url: thumbnailUrl,
                             altText: title,
-                            prompt: "Draft Thumbnail",
+                            prompt: "Featured Image",
                             position: "featured"
                         }] : []),
                         ...(bodyImageUrl ? [{
-                            type: "section", // Body image
+                            type: "section",
                             url: bodyImageUrl,
                             altText: title,
-                            prompt: "Draft Body Image",
+                            prompt: "Body Image",
                             position: "body"
                         }] : [])
                     ]
                 }
-            } as any
+            } as any,
+            include: { images: true }
         });
-
-        console.log("[API] Draft Saved:", article.id);
 
         return NextResponse.json({
             success: true,
             id: article.id,
-            message: "Draft saved successfully!"
+            imagesStored: article.images.length
         });
 
-    } catch (error) {
-        console.error("[API] Save Draft Error:", error);
-        return NextResponse.json({ error: "Failed to save draft. Ensure Database and Storage are connected." }, { status: 500 });
+    } catch (error: any) {
+        console.error("[API] Save Error:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
 
-export async function GET(req: Request) {
+export async function GET() {
     try {
         const drafts = await prisma.article.findMany({
             where: { status: "draft" },
             include: { images: true },
             orderBy: { updatedAt: 'desc' }
         });
-
         return NextResponse.json({ drafts });
     } catch (error) {
-        return NextResponse.json({ error: "Failed to fetch drafts" }, { status: 500 });
+        return NextResponse.json({ error: "Fetch failed" }, { status: 500 });
     }
 }
 
@@ -148,27 +144,20 @@ export async function DELETE(req: Request) {
     try {
         const { searchParams } = new URL(req.url);
         const id = searchParams.get("id");
-        const ids = searchParams.get("ids"); // For bulk delete
+        const ids = searchParams.get("ids");
 
-        if (!id && !ids) {
-            return NextResponse.json({ error: "ID or IDs required" }, { status: 400 });
-        }
+        console.log(`[API] Deleting: ${id || ids}`);
 
         if (ids) {
-            const idList = ids.split(",");
-            await prisma.article.deleteMany({
-                where: { id: { in: idList } }
-            });
-            return NextResponse.json({ success: true, message: "Drafts deleted" });
+            const list = ids.split(",");
+            await prisma.article.deleteMany({ where: { id: { in: list } } });
+        } else if (id) {
+            await prisma.article.delete({ where: { id } });
         }
 
-        await prisma.article.delete({
-            where: { id: id as string }
-        });
-
-        return NextResponse.json({ success: true, message: "Draft deleted" });
-    } catch (error) {
-        console.error("[API] Delete Draft Error:", error);
-        return NextResponse.json({ error: "Failed to delete draft" }, { status: 500 });
+        return NextResponse.json({ success: true });
+    } catch (error: any) {
+        console.error("[API] Delete Failed:", error.message);
+        return NextResponse.json({ error: `Delete failed: ${error.message}` }, { status: 500 });
     }
 }

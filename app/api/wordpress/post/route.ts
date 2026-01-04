@@ -1,22 +1,13 @@
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-    console.log("[API] Starting WordPress Auto-Publish...");
+    console.log("[API] Starting WordPress Auto-Publish with Rank Math SEO...");
 
     try {
         const formData = await req.formData();
         const htmlContent = formData.get("htmlContent") as string;
-
-        // Revised Inputs: Distinct Featured vs Body images
         const featuredImageFile = formData.get("featuredImage") as File;
         const bodyImageFile = formData.get("bodyImage") as File;
-
-        // Fallback for backward compatibility
-        const legacyImageFile = formData.get("imageFile") as File;
-
-        // Decide which files to use
-        const finalFeatured = featuredImageFile || legacyImageFile;
-        const finalBody = bodyImageFile || legacyImageFile;
 
         if (!htmlContent) {
             return NextResponse.json({ error: "Missing HTML content" }, { status: 400 });
@@ -28,178 +19,126 @@ export async function POST(req: Request) {
         const wpPass = process.env.WORDPRESS_APP_PASSWORD || process.env.WP_APP_PASSWORD;
 
         if (!wpUrl || !wpUser || !wpPass) {
-            console.error("Missing WP Credentials in .env");
-            return NextResponse.json({ error: "Server Configuration Error: WP Credentials Missing" }, { status: 500 });
+            return NextResponse.json({ error: "WP Credentials Missing" }, { status: 500 });
         }
 
         const authHeader = `Basic ${Buffer.from(`${wpUser}:${wpPass}`).toString("base64")}`;
 
-        // Helper to upload image
+        // 2. Upload Images
         const uploadImage = async (file: File) => {
-            const arrayBuffer = await file.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
+            if (!file || file.size === 0) return null;
             const res = await fetch(`${wpUrl}/wp-json/wp/v2/media`, {
                 method: "POST",
                 headers: {
                     "Authorization": authHeader,
                     "Content-Disposition": `attachment; filename="${file.name}"`,
-                    "Content-Type": file.type,
+                    "Content-Type": file.type || "image/png",
                 },
-                body: buffer
+                body: Buffer.from(await file.arrayBuffer())
             });
-            if (!res.ok) throw new Error(`Upload Failed: ${res.status}`);
+            if (!res.ok) return null;
             return await res.json();
         };
 
-        // 2. Upload Images
-        let featuredMediaId = 0;
-        let bodyImageUrl = "";
+        const featuredMedia = await uploadImage(featuredImageFile);
+        const bodyMedia = await uploadImage(bodyImageFile);
 
-        if (finalFeatured) {
-            console.log("[API] Uploading Featured Image...");
-            const mediaData = await uploadImage(finalFeatured);
-            featuredMediaId = mediaData.id;
-        }
-
-        if (finalBody) {
-            console.log("[API] Uploading Body Image...");
-            const mediaData = await uploadImage(finalBody);
-            bodyImageUrl = mediaData.source_url;
-        }
-
-        // 3. Clean Content - Remove META info and Artifacts
-        let finalContent = htmlContent;
-
-        // -- EXTRACT SEO DATA BEFORE CLEANING --
+        // 3. SEO Extraction FIRST (Before any cleaning!)
         let focusKeyword = "";
-        let metaDescription = "";
+        let metaDesc = "";
 
-        const keywordMatch = finalContent.match(/FOCUS KEYWORD:\s*(.*)/i);
-        if (keywordMatch && keywordMatch[1]) {
-            focusKeyword = keywordMatch[1].trim();
+        // Try multiple formats for focus keyword
+        const kwMatch = htmlContent.match(/FOCUS\s*KEYWORD[:\s]+([^\r\n<]+)/i);
+        if (kwMatch) {
+            focusKeyword = kwMatch[1].replace(/['"]/g, '').trim();
         }
 
-        const metaDescMatch = finalContent.match(/META DESCRIPTION:\s*(.*)/i);
-        if (metaDescMatch && metaDescMatch[1]) {
-            metaDescription = metaDescMatch[1].trim();
+        // Try multiple formats for meta description  
+        const descMatch = htmlContent.match(/META\s*DESCRIPTION[:\s]+([^\r\n<]+)/i);
+        if (descMatch) {
+            metaDesc = descMatch[1].replace(/['"]/g, '').trim();
         }
-        // --------------------------------------
 
-        // Remove META info (Aggressive Cleaning)
-        // 1. Remove entire HTML comment blocks containing META TITLE (e.g. <!-- META TITLE... -->)
+        console.log("[API] Extracted SEO Data:", { focusKeyword, metaDesc });
+
+        // 4. THEN Clean Artifacts (after extraction)
+        let finalContent = htmlContent;
         finalContent = finalContent.replace(/<!--[\s\S]*?META TITLE[\s\S]*?-->/gi, "");
-
-        // 2. Remove specific lines if they leaked out of comments
         finalContent = finalContent.replace(/^META TITLE:.*$/gim, "");
         finalContent = finalContent.replace(/^META DESCRIPTION:.*$/gim, "");
         finalContent = finalContent.replace(/^FOCUS KEYWORD:.*$/gim, "");
         finalContent = finalContent.replace(/^URL SLUG:.*$/gim, "");
-
-        // Remove image prompt comments
-        finalContent = finalContent.replace(/<!--\s*\[IMAGE_PROMPT_START\][\s\S]*?\[IMAGE_PROMPT_END\]\s*-->/g, "");
-
-        // Remove Markdown artifacts globally (start, end, middle)
         finalContent = finalContent.replace(/```html/gi, "").replace(/```/g, "");
         finalContent = finalContent.replace(/'''html/gi, "").replace(/'''/g, "");
-
-        // Remove leading/trailing whitespace and dots
-        finalContent = finalContent.replace(/^\s*\.\.\.\s*/gm, "");
+        finalContent = finalContent.replace(/<!--\s*\[IMAGE_PROMPT_START\][\s\S]*?\[IMAGE_PROMPT_END\]\s*-->/g, "");
         finalContent = finalContent.trim();
 
-        // 4. Style Injection (Force formatting)
+        // 4. Style Injections (ONLY for unstyled tags - preserve Gemini's original styling)
+        // Only add styles to <a> and <p> tags that DON'T already have style attributes
+        finalContent = finalContent.replace(/<a(?![^>]*style=)([^>]*)>/gi, '<a style="color: #003366; font-weight: 700; text-decoration: underline;"$1>');
+        finalContent = finalContent.replace(/<p>(?![^>]*style=)/gi, '<p style="font-size: 18px; line-height: 1.8; margin-bottom: 28px; color: #232323; font-family: Cambria, Georgia, serif;">');
 
-        // Links: Navy Blue (#003366), Bold, No Underline
-        finalContent = finalContent.replace(
-            /<a /gi,
-            '<a style="color: #003366; font-weight: 700; text-decoration: underline;" '
-        );
-
-        // Paragraphs: Font size 18px, Line height 1.8, Margin bottom 28px (Natural reading flow)
-        finalContent = finalContent.replace(
-            /<p>/gi,
-            '<p style="font-size: 18px; line-height: 1.8; margin-bottom: 28px; color: #333;">'
-        );
-
-        // Bold tags: Ensure they are readable
-        // Optional: If you want bold tags to be a specific color, add it here.
-
-        // 5. Parse Title & Style H1
-        let title = "Untitled Blog Post";
+        // Parse Title & H1 (only add style if not already present)
+        let title = "Blog Post " + Date.now();
         const h1Match = finalContent.match(/<h1[^>]*>(.*?)<\/h1>/i);
-
         if (h1Match) {
-            if (h1Match[1]) {
-                title = h1Match[1].replace(/<[^>]*>/g, "");
+            title = h1Match[1].replace(/<[^>]*>/g, "");
+            // Only add style if H1 doesn't already have style
+            if (!h1Match[0].includes('style=')) {
+                const styledH1 = h1Match[0].replace("<h1", '<h1 style="margin-top: 60px; margin-bottom: 30px; font-family: Georgia, serif; font-size: 38px; color: #111;"');
+                finalContent = finalContent.replace(h1Match[0], styledH1);
             }
-            // Add margin and force Cambria/Georgia font to match H2
-            const newH1 = h1Match[0].replace(
-                "<h1",
-                '<h1 style="margin-top: 60px; margin-bottom: 30px; font-family: Cambria, Georgia, serif; font-weight: 700; line-height: 1.2; font-size: 36px; color: #1a1a1a;"'
-            );
-            finalContent = finalContent.replace(h1Match[0], newH1);
         }
 
-        // 6. Inject Body Image
-        if (bodyImageUrl) {
-            const imageAlt = focusKeyword || title; // Use keyword for ALT if available
-            const imageHtml = `
-                <figure class="wp-block-image size-full" style="margin-top: 32px; margin-bottom: 32px;">
-                    <img src="${bodyImageUrl}" alt="${imageAlt}" style="width:100%; height:auto; border-radius:8px;" />
+        // Body Image Injection (Replace placeholder OR insert after first paragraph)
+        if (bodyMedia?.source_url) {
+            const imgHtml = `
+                <figure class="wp-block-image size-full" style="margin: 40px 0;">
+                    <img src="${bodyMedia.source_url}" alt="${focusKeyword || title}" style="width:100%; border-radius:12px;" />
                 </figure>
             `;
 
-            // Strategy: Try to put it after the intro paragraph
-            const introEndMatch = finalContent.match(/<\/h1>[\s\S]*?<\/p>/i);
-
-            if (introEndMatch) {
-                const insertPosition = finalContent.indexOf(introEndMatch[0]) + introEndMatch[0].length;
-                finalContent = finalContent.slice(0, insertPosition) + imageHtml + finalContent.slice(insertPosition);
-            } else if (finalContent.includes("[INSERT_IMAGE_HERE]")) {
-                // If no intro paragraph found but placeholder exists, use placeholder
-                finalContent = finalContent.replace("[INSERT_IMAGE_HERE]", imageHtml);
+            // Primary: Replace [INSERT_IMAGE_HERE] placeholder (first occurrence)
+            if (finalContent.includes("[INSERT_IMAGE_HERE]")) {
+                finalContent = finalContent.replace("[INSERT_IMAGE_HERE]", imgHtml);
             } else {
-                // Fallback: after first paragraph tag ending
-                const firstPEnd = finalContent.indexOf("</p>");
-                if (firstPEnd !== -1) {
-                    finalContent = finalContent.slice(0, firstPEnd + 4) + imageHtml + finalContent.slice(firstPEnd + 4);
+                // Fallback: Insert after first paragraph
+                const firstP = finalContent.indexOf("</p>");
+                if (firstP !== -1) {
+                    finalContent = finalContent.slice(0, firstP + 4) + imgHtml + finalContent.slice(firstP + 4);
+                } else {
+                    finalContent = imgHtml + finalContent;
                 }
             }
         }
 
-        // ALWAYS remove the placeholder tag if it remains (e.g. if we used intro-matching instead)
-        finalContent = finalContent.replace("[INSERT_IMAGE_HERE]", "");
+        // ALWAYS remove ALL remaining image placeholders (any format)
+        finalContent = finalContent.replace(/\[INSERT_IMAGE_HERE\]/gi, "");
+        finalContent = finalContent.replace(/\[INSERT IMAGE HERE\]/gi, "");
+        finalContent = finalContent.replace(/INSERT_IMAGE_HERE/gi, "");
+        finalContent = finalContent.replace(/\[Image:.*?\]/gi, "");
 
-        // 7. Get blog category ID
-        let blogCategoryId = 1; // Default to uncategorized
-        try {
-            const catRes = await fetch(`${wpUrl}/wp-json/wp/v2/categories?slug=blog`, {
-                headers: { "Authorization": authHeader }
-            });
-            if (catRes.ok) {
-                const categories = await catRes.json();
-                if (categories.length > 0) {
-                    blogCategoryId = categories[0].id;
-                }
-            }
-        } catch (e) {
-            console.log("[API] Could not fetch blog category, using default");
-        }
-
-        // 8. Create Post with Rank Math Meta
-        console.log("[API] Creating Post with Rank Math SEO...");
-
-        const postMeta: any = {};
-        if (focusKeyword) postMeta.rank_math_focus_keyword = focusKeyword;
-        if (metaDescription) postMeta.rank_math_description = metaDescription;
+        // 5. Publish to WordPress with Rank Math Meta
+        console.log("[API] Sending to WP with SEO:", { focusKeyword, metaDesc, title });
 
         const postData = {
             title: title,
             content: finalContent,
             status: 'publish',
-            featured_media: featuredMediaId,
-            categories: [blogCategoryId],
+            featured_media: featuredMedia?.id || 0,
+            categories: [1],
             template: 'elementor_canvas',
-            meta: postMeta // Send Rank Math Data
+            meta: {
+                // Rank Math (all known formats)
+                rank_math_focus_keyword: focusKeyword,
+                rank_math_description: metaDesc,
+                _rank_math_focus_keyword: focusKeyword,
+                _rank_math_description: metaDesc,
+                rank_math_seo_score: 80,
+                // Yoast SEO (for compatibility)
+                _yoast_wpseo_focuskw: focusKeyword,
+                _yoast_wpseo_metadesc: metaDesc,
+            }
         };
 
         const postRes = await fetch(`${wpUrl}/wp-json/wp/v2/posts`, {
@@ -209,22 +148,17 @@ export async function POST(req: Request) {
         });
 
         if (!postRes.ok) {
-            const err = await postRes.text();
-            console.error("[API] Post Creation Failed:", err);
-            return NextResponse.json({ error: `Post Creation Failed: ${postRes.status}` }, { status: 500 });
+            const errorText = await postRes.text();
+            console.error("[API] WP Publish Error:", errorText);
+            throw new Error(`WP Final Publish Failed: ${postRes.status}`);
         }
 
-        const newPost = await postRes.json();
-        console.log("[API] Post Published! Link:", newPost.link);
+        const result = await postRes.json();
+        console.log("[API] Published successfully:", result.link);
+        return NextResponse.json({ success: true, link: result.link });
 
-        return NextResponse.json({
-            success: true,
-            link: newPost.link,
-            title: newPost.title.rendered
-        });
-
-    } catch (error) {
-        console.error("[API] Auto-Publish Error:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    } catch (err: any) {
+        console.error(err);
+        return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }
