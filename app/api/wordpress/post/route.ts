@@ -18,8 +18,8 @@ export async function POST(req: Request) {
         const finalFeatured = featuredImageFile || legacyImageFile;
         const finalBody = bodyImageFile || legacyImageFile;
 
-        if (!htmlContent || (!finalFeatured && !finalBody)) {
-            return NextResponse.json({ error: "Missing content or images" }, { status: 400 });
+        if (!htmlContent) {
+            return NextResponse.json({ error: "Missing HTML content" }, { status: 400 });
         }
 
         // 1. Credentials Check
