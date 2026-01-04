@@ -106,9 +106,7 @@ export async function POST(req: Request) {
             title: title,
             content: finalContent,
             status: 'publish',
-            featured_media: featuredMediaId,
-            template: 'canvas',
-            meta: {}
+            featured_media: featuredMediaId
         };
 
         const postRes = await fetch(`${wpUrl}/wp-json/wp/v2/posts`, {
