@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { callOpenRouter } from "@/lib/openrouter";
+import { callGoogleGenAI } from "@/lib/google";
 
 export const runtime = "edge";
 
@@ -33,10 +33,8 @@ Editorial photography of a stressed woman sitting at a messy kitchen table at ni
 
         const userPrompt = `Analyze this blog post content and create the image prompt:\n\n${truncatedContent}`;
 
-        const prompt = await callOpenRouter("openai/gpt-4o-mini", [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
-        ]);
+        // Using FREE Google GenAI (Flash 2.0)
+        const prompt = await callGoogleGenAI(systemPrompt, userPrompt);
 
         return NextResponse.json({ prompt: prompt.trim() });
 
