@@ -49,6 +49,7 @@ export default function KeywordGeneratorPage() {
 
     // Draft Restore State
     const [initialHtmlContent, setInitialHtmlContent] = useState<string>("")
+    const [editorHtml, setEditorHtml] = useState<string>("") // Real-time content from editor
     const [initialImageSrc, setInitialImageSrc] = useState<string | null>(null)
     const [initialBodyImageSrc, setInitialBodyImageSrc] = useState<string | null>(null)
 
@@ -145,25 +146,46 @@ export default function KeywordGeneratorPage() {
 -   오직 **HTML 코드 블록**으로 된 본문 내용만 즉시 출력하세요.`
     }
 
-    const constructImagePrompt = () => {
-        if (!targetLongTailKeyword) return "키워드를 선택하면 이미지 프롬프트가 생성됩니다.";
+    const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
 
-        return `**[Image Generation Command]**
+    const handleCopyImagePrompt = async () => {
+        setIsGeneratingPrompt(true);
+        try {
+            let promptText = "";
 
-**Step 1: Analyze the "Human Touch" Story**
-Look at the blog post you just wrote above. specifically the **introduction** and the **personal experience** described (e.g., the specific time, location, objects, or situation mentioned, like "kitchen table at 10 PM" or "opening a letter in the rain").
+            // 1. If we have content in the editor, use Backend AI to analyze it
+            if (editorHtml && editorHtml.length > 100) {
+                const res = await fetch("/api/generation/image-prompt", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        content: editorHtml,
+                        focusKeyword: targetFocusKeyword || targetLongTailKeyword
+                    })
+                });
 
-**Step 2: Generate Visual Request**
-Generate a **SINGLE, UNIFIED** header image (Do NOT create a collage or split screen). **High-Resolution (8K)**, **16:9 Ultra-Wide** aspect ratio that depicts that *exact specific moment*.
+                if (res.ok) {
+                    const data = await res.json();
+                    promptText = data.prompt;
+                }
+            }
 
-**Visual Style Requirements**:
-1.  **Subject**: Visualize the **real-life scenario** from the text. (Do NOT generate generic metaphors like "gold coins" unless they were part of the story).
-2.  **Atmosphere**: Mood must match the story (e.g., stressful, relieved, rainy, cozy).
-3.  **Art Style**: **New York Editorial Photography**. Cinematic lighting, shallow depth of field (Sony A7R IV).
-4.  **Tech Specs**: **16:9 Aspect Ratio** (Wide). **SINGLE IMAGE only** (No split screens). No text. No illustrations.
+            // 2. Fallback: If no content or API failed, use the Direct Template
+            if (!promptText) {
+                const keyword = targetLongTailKeyword || targetFocusKeyword || "New York Lifestyle";
+                promptText = `Editorial photography of ${keyword}, New York City atmosphere, cinematic lighting, shallow depth of field, shot on Sony A7R IV, 8k resolution, highly detailed, realistic texture, 16:9 aspect ratio --ar 16:9 --v 6.0`;
+            }
 
-**Action**:
-Create the single unified image now based on the story you wrote.`;
+            // 3. Copy to clipboard
+            await navigator.clipboard.writeText(promptText);
+            alert("이미지 프롬프트가 복사되었습니다! (Flow/Midjourney용)");
+
+        } catch (error) {
+            console.error("Failed to generate prompt", error);
+            alert("프롬프트 생성 실패. 기본 템플릿을 사용합니다.");
+        } finally {
+            setIsGeneratingPrompt(false);
+        }
     }
 
     const handleCopy = () => {
@@ -333,15 +355,16 @@ Create the single unified image now based on the story you wrote.`;
                         </p>
                         <div className="flex gap-2 w-full">
                             <button
-                                onClick={() => {
-                                    const text = constructImagePrompt();
-                                    navigator.clipboard.writeText(text);
-                                    alert("이미지 프롬프트가 복사되었습니다!");
-                                }}
+                                onClick={handleCopyImagePrompt}
+                                disabled={isGeneratingPrompt}
                                 className="flex-1 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 hover:border-purple-300 transition-all shadow-sm flex items-center justify-center gap-2 group"
                             >
-                                <Copy className="w-3.5 h-3.5 text-gray-400 group-hover:text-purple-500 transition-colors" />
-                                프롬프트 복사
+                                {isGeneratingPrompt ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                                ) : (
+                                    <Copy className="w-3.5 h-3.5 text-gray-400 group-hover:text-purple-500 transition-colors" />
+                                )}
+                                {isGeneratingPrompt ? "분석 중..." : "프롬프트 복사"}
                             </button>
                             <button
                                 onClick={() => window.open('https://labs.google/fx/ko/tools/flow/project/743f991d-0bc5-449d-9d3c-fea44b52856f', '_blank')}
@@ -507,6 +530,7 @@ Create the single unified image now based on the story you wrote.`;
                             }
                             return null;
                         }}
+                        onHtmlChange={setEditorHtml}
                     />
                 </div>
 
@@ -520,6 +544,7 @@ Create the single unified image now based on the story you wrote.`;
                         // We need to pass this down. 
                         // Note: Using a ref or state wrapper might be cleaner, but prop syncing works.
                         setInitialHtmlContent(draft.content);
+                        setEditorHtml(draft.content); // Sync editor state synchronously for prompt gen
 
                         // 3. Set Images
                         // Featured (Thumbnail) -> ThumbnailGenerator

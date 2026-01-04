@@ -13,9 +13,10 @@ interface WordPressPublisherProps {
     getFeaturedImage?: () => Promise<Blob | null>;
     initialHtmlContent?: string;
     initialBodyImageSrc?: string | null;
+    onHtmlChange?: (html: string) => void;
 }
 
-export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initialHtmlContent, initialBodyImageSrc }: WordPressPublisherProps) {
+export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initialHtmlContent, initialBodyImageSrc, onHtmlChange }: WordPressPublisherProps) {
     const [htmlContent, setHtmlContent] = useState("")
     const [bodyImageFile, setBodyImageFile] = useState<File | null>(null)
     const [isPublishing, setIsPublishing] = useState(false)
@@ -206,7 +207,10 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
                             placeholder="<!-- META TITLE... --> <html>... 여기에 붙여넣으세요"
                             className="h-64 font-mono text-xs bg-gray-50 dark:bg-zinc-950 resize-none focus:ring-blue-500"
                             value={htmlContent}
-                            onChange={(e) => setHtmlContent(e.target.value)}
+                            onChange={(e) => {
+                                setHtmlContent(e.target.value);
+                                onHtmlChange?.(e.target.value);
+                            }}
                         />
                     </div>
                 </div>
