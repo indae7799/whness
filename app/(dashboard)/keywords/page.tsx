@@ -584,6 +584,34 @@ function DraftsManager({ onRestore }: { onRestore: (draft: any) => void }) {
         setSelectedIds(next);
     }
 
+    const handleDelete = async (id?: string) => {
+        const targetIds = id ? [id] : Array.from(selectedIds);
+        if (targetIds.length === 0) return;
+
+        if (!confirm(`정말로 ${targetIds.length === 1 ? '이 글감을' : '선택한 ' + targetIds.length + '개의 글감을'} 삭제하시겠습니까?`)) return;
+
+        try {
+            const res = await fetch(`/api/articles/draft?${id ? `id=${id}` : `ids=${targetIds.join(',')}`}`, {
+                method: 'DELETE'
+            });
+            if (res.ok) {
+                // Success
+                setDrafts(prev => prev.filter(d => !targetIds.includes(d.id)));
+                if (!id) setSelectedIds(new Set());
+                else {
+                    const next = new Set(selectedIds);
+                    next.delete(id);
+                    setSelectedIds(next);
+                }
+            } else {
+                alert("삭제 실패");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("삭제 중 에러 발생");
+        }
+    }
+
     const runBatch = async () => {
         if (selectedIds.size === 0) return alert("선택된 글감이 없습니다.");
         if (isBatchRunning) return;
@@ -688,6 +716,15 @@ function DraftsManager({ onRestore }: { onRestore: (draft: any) => void }) {
                         {isBatchRunning ? <Loader2 className="animate-spin w-4 h-4" /> : <Zap className="w-4 h-4" />}
                         {isBatchRunning ? "발행 중..." : "선택 항목 일괄 발행"}
                     </button>
+                    {selectedIds.size > 0 && (
+                        <button
+                            onClick={() => handleDelete()}
+                            className="text-sm px-4 py-2 rounded-lg font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 flex items-center gap-2"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                            선택 삭제
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -732,6 +769,14 @@ function DraftsManager({ onRestore }: { onRestore: (draft: any) => void }) {
                                 </td>
                                 <td className="p-4 text-right text-gray-500">
                                     {format(new Date(draft.createdAt), "MM/dd HH:mm")}
+                                </td>
+                                <td className="p-4 text-right" onClick={e => e.stopPropagation()}>
+                                    <button
+                                        onClick={() => handleDelete(draft.id)}
+                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
                                 </td>
                             </tr>
                         ))}

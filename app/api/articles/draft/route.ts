@@ -113,7 +113,7 @@ export async function POST(req: Request) {
                         }] : [])
                     ]
                 }
-            }
+            } as any
         });
 
         console.log("[API] Draft Saved:", article.id);
@@ -141,5 +141,34 @@ export async function GET(req: Request) {
         return NextResponse.json({ drafts });
     } catch (error) {
         return NextResponse.json({ error: "Failed to fetch drafts" }, { status: 500 });
+    }
+}
+
+export async function DELETE(req: Request) {
+    try {
+        const { searchParams } = new URL(req.url);
+        const id = searchParams.get("id");
+        const ids = searchParams.get("ids"); // For bulk delete
+
+        if (!id && !ids) {
+            return NextResponse.json({ error: "ID or IDs required" }, { status: 400 });
+        }
+
+        if (ids) {
+            const idList = ids.split(",");
+            await prisma.article.deleteMany({
+                where: { id: { in: idList } }
+            });
+            return NextResponse.json({ success: true, message: "Drafts deleted" });
+        }
+
+        await prisma.article.delete({
+            where: { id: id as string }
+        });
+
+        return NextResponse.json({ success: true, message: "Draft deleted" });
+    } catch (error) {
+        console.error("[API] Delete Draft Error:", error);
+        return NextResponse.json({ error: "Failed to delete draft" }, { status: 500 });
     }
 }
