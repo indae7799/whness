@@ -101,6 +101,7 @@ export const ThumbnailGenerator = forwardRef<ThumbnailGeneratorRef, ThumbnailGen
         // 1. Draw Background
         if (image) {
             const img = new Image()
+            img.crossOrigin = "anonymous" // Enable CORS for Supabase/External URLs
             img.src = image
             img.onload = () => {
                 const ratio = Math.max(canvas.width / img.width, canvas.height / img.height)

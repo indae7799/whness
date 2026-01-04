@@ -70,45 +70,81 @@ export async function POST(req: Request) {
         // 3. Clean Content - Remove META info and Artifacts
         let finalContent = htmlContent;
 
-        // Remove META info
-        finalContent = finalContent.replace(/META TITLE[^<\n]*/gi, "");
-        finalContent = finalContent.replace(/META DESCRIPTION[^<\n]*/gi, "");
-        finalContent = finalContent.replace(/FOCUS KEYWORD[^<\n]*/gi, "");
-        finalContent = finalContent.replace(/URL SLUG[^<\n]*/gi, "");
+        // -- EXTRACT SEO DATA BEFORE CLEANING --
+        let focusKeyword = "";
+        let metaDescription = "";
+
+        const keywordMatch = finalContent.match(/FOCUS KEYWORD:\s*(.*)/i);
+        if (keywordMatch && keywordMatch[1]) {
+            focusKeyword = keywordMatch[1].trim();
+        }
+
+        const metaDescMatch = finalContent.match(/META DESCRIPTION:\s*(.*)/i);
+        if (metaDescMatch && metaDescMatch[1]) {
+            metaDescription = metaDescMatch[1].trim();
+        }
+        // --------------------------------------
+
+        // Remove META info (Aggressive Cleaning)
+        // 1. Remove entire HTML comment blocks containing META TITLE (e.g. <!-- META TITLE... -->)
+        finalContent = finalContent.replace(/<!--[\s\S]*?META TITLE[\s\S]*?-->/gi, "");
+
+        // 2. Remove specific lines if they leaked out of comments
+        finalContent = finalContent.replace(/^META TITLE:.*$/gim, "");
+        finalContent = finalContent.replace(/^META DESCRIPTION:.*$/gim, "");
+        finalContent = finalContent.replace(/^FOCUS KEYWORD:.*$/gim, "");
+        finalContent = finalContent.replace(/^URL SLUG:.*$/gim, "");
 
         // Remove image prompt comments
         finalContent = finalContent.replace(/<!--\s*\[IMAGE_PROMPT_START\][\s\S]*?\[IMAGE_PROMPT_END\]\s*-->/g, "");
 
-        // Remove Markdown artifacts ('''html, ''', ```html, ```)
-        finalContent = finalContent.replace(/^```html\s*/i, "").replace(/^```\s*/, "").replace(/```$/, "");
-        finalContent = finalContent.replace(/^'''html\s*/i, "").replace(/^'''\s*/, "").replace(/'''$/, "");
+        // Remove Markdown artifacts globally (start, end, middle)
+        finalContent = finalContent.replace(/```html/gi, "").replace(/```/g, "");
+        finalContent = finalContent.replace(/'''html/gi, "").replace(/'''/g, "");
 
         // Remove leading/trailing whitespace and dots
         finalContent = finalContent.replace(/^\s*\.\.\.\s*/gm, "");
         finalContent = finalContent.trim();
 
-        // 4. Parse Title from H1
+        // 4. Style Injection (Force formatting)
+
+        // Links: Navy Blue (#003366), Bold, No Underline
+        finalContent = finalContent.replace(
+            /<a /gi,
+            '<a style="color: #003366; font-weight: 700; text-decoration: underline;" '
+        );
+
+        // Paragraphs: Font size 18px, Line height 1.8, Margin bottom 28px (Natural reading flow)
+        finalContent = finalContent.replace(
+            /<p>/gi,
+            '<p style="font-size: 18px; line-height: 1.8; margin-bottom: 28px; color: #333;">'
+        );
+
+        // Bold tags: Ensure they are readable
+        // Optional: If you want bold tags to be a specific color, add it here.
+
+        // 5. Parse Title & Style H1
         let title = "Untitled Blog Post";
         const h1Match = finalContent.match(/<h1[^>]*>(.*?)<\/h1>/i);
-        if (h1Match && h1Match[1]) {
-            title = h1Match[1].replace(/<[^>]*>/g, "");
-        }
 
-        // 5. Enhance H1 Style (Margin + Font Family)
         if (h1Match) {
+            if (h1Match[1]) {
+                title = h1Match[1].replace(/<[^>]*>/g, "");
+            }
             // Add margin and force Cambria/Georgia font to match H2
             const newH1 = h1Match[0].replace(
                 "<h1",
-                '<h1 style="margin-top: 60px; font-family: Cambria, Georgia, serif; font-weight: 700; line-height: 1.2;"'
+                '<h1 style="margin-top: 60px; margin-bottom: 30px; font-family: Cambria, Georgia, serif; font-weight: 700; line-height: 1.2; font-size: 36px; color: #1a1a1a;"'
             );
             finalContent = finalContent.replace(h1Match[0], newH1);
         }
 
         // 6. Inject Body Image
         if (bodyImageUrl) {
+            const imageAlt = focusKeyword || title; // Use keyword for ALT if available
             const imageHtml = `
                 <figure class="wp-block-image size-full" style="margin-top: 32px; margin-bottom: 32px;">
-                    <img src="${bodyImageUrl}" alt="${title}" style="width:100%; height:auto; border-radius:8px;" />
+                    <img src="${bodyImageUrl}" alt="${imageAlt}" style="width:100%; height:auto; border-radius:8px;" />
                 </figure>
             `;
 
@@ -149,15 +185,21 @@ export async function POST(req: Request) {
             console.log("[API] Could not fetch blog category, using default");
         }
 
-        // 8. Create Post with category and template
-        console.log("[API] Creating Post...");
+        // 8. Create Post with Rank Math Meta
+        console.log("[API] Creating Post with Rank Math SEO...");
+
+        const postMeta: any = {};
+        if (focusKeyword) postMeta.rank_math_focus_keyword = focusKeyword;
+        if (metaDescription) postMeta.rank_math_description = metaDescription;
+
         const postData = {
             title: title,
             content: finalContent,
             status: 'publish',
             featured_media: featuredMediaId,
             categories: [blogCategoryId],
-            template: 'elementor_canvas'
+            template: 'elementor_canvas',
+            meta: postMeta // Send Rank Math Data
         };
 
         const postRes = await fetch(`${wpUrl}/wp-json/wp/v2/posts`, {
