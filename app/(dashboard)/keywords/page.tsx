@@ -57,6 +57,9 @@ export default function KeywordGeneratorPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 9; // Grid display
 
+    // Drafts refresh callback
+    const [refreshDrafts, setRefreshDrafts] = useState<(() => void) | null>(null);
+
     // Pagination Logic
     const totalPages = Math.ceil(savedKeywords.length / ITEMS_PER_PAGE);
     const displayedSavedKeywords = savedKeywords.slice(
@@ -522,11 +525,13 @@ export default function KeywordGeneratorPage() {
                             return null;
                         }}
                         onHtmlChange={setEditorHtml}
+                        onDraftSaved={() => refreshDrafts?.()}
                     />
                 </div>
 
                 {/* RESERVED DRAFTS & BATCH PUBLISHING */}
                 <DraftsManager
+                    onRefreshNeeded={(fn) => setRefreshDrafts(() => fn)}
                     onRestore={async (draft) => {
                         // 1. Set Title (Long-tail maps to title usually)
                         setTargetLongTailKeyword(draft.title);
@@ -556,7 +561,7 @@ export default function KeywordGeneratorPage() {
 // Sub-component for cleaner file structure (ideally move to separate file, but placing here for context)
 // import { Calendar as CalendarIcon, Clock } from "lucide-react"; // REMOVED: Already imported at top
 
-function DraftsManager({ onRestore }: { onRestore: (draft: any) => void }) {
+function DraftsManager({ onRestore, onRefreshNeeded }: { onRestore: (draft: any) => void, onRefreshNeeded?: (refresh: () => void) => void }) {
     const [drafts, setDrafts] = useState<any[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [isBatchRunning, setIsBatchRunning] = useState(false);
@@ -565,6 +570,7 @@ function DraftsManager({ onRestore }: { onRestore: (draft: any) => void }) {
 
     useEffect(() => {
         loadDrafts();
+        onRefreshNeeded?.(loadDrafts); // Pass refresh function to parent
     }, []);
 
     const loadDrafts = async () => {

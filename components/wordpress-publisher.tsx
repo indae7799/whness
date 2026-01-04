@@ -14,9 +14,10 @@ interface WordPressPublisherProps {
     initialHtmlContent?: string;
     initialBodyImageSrc?: string | null;
     onHtmlChange?: (html: string) => void;
+    onDraftSaved?: () => void;
 }
 
-export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initialHtmlContent, initialBodyImageSrc, onHtmlChange }: WordPressPublisherProps) {
+export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initialHtmlContent, initialBodyImageSrc, onHtmlChange, onDraftSaved }: WordPressPublisherProps) {
     const [htmlContent, setHtmlContent] = useState("")
     const [bodyImageFile, setBodyImageFile] = useState<File | null>(null)
     const [isPublishing, setIsPublishing] = useState(false)
@@ -108,6 +109,7 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
             if (res.ok) {
                 alert("성공적으로 저장되었습니다! (하단 저장 목록 확인)");
                 setResult({ success: true, link: "#drafts", error: undefined }); // Pseudo success
+                onDraftSaved?.(); // Refresh the drafts list
             } else {
                 alert("저장 실패");
             }
