@@ -135,6 +135,25 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
         setResult(null)
 
         try {
+            // Helper function to upload a single image
+            const uploadImageToWP = async (file: File | Blob, type: 'featured' | 'body') => {
+                const formData = new FormData();
+                formData.append("image", file, `${type}-image.png`);
+                formData.append("type", type);
+
+                const res = await fetch("/api/wordpress/upload-image", {
+                    method: "POST",
+                    body: formData
+                });
+
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(`Image upload failed: ${errData.error || res.status}`);
+                }
+
+                return await res.json();
+            };
+
             // 1. Get Featured Image (Async from Top Component)
             let featuredBlob: Blob | null = null;
             if (getFeaturedImage) {
@@ -150,23 +169,41 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
                 return;
             }
 
-            // Clean Content - Remove internal image prompt comments
-            const cleanHtml = htmlContent.replace(/<!--\s*\[IMAGE_PROMPT_START\][\s\S]*?\[IMAGE_PROMPT_END\]\s*-->/g, "").trim();
-
-            const formData = new FormData()
-            formData.append("htmlContent", cleanHtml)
+            // 3. Upload images SEPARATELY first (to avoid body size limits)
+            let featuredMediaId: number | null = null;
+            let featuredMediaUrl: string | null = null;
+            let bodyMediaUrl: string | null = null;
 
             if (featuredBlob) {
-                formData.append("featuredImage", featuredBlob, "thumbnail-featured.png");
+                console.log("[Client] Uploading featured image...");
+                const featuredResult = await uploadImageToWP(featuredBlob, 'featured');
+                featuredMediaId = featuredResult.id;
+                featuredMediaUrl = featuredResult.url;
+                console.log("[Client] Featured image uploaded:", featuredMediaUrl);
             }
 
             if (finalBodyImage) {
-                formData.append("bodyImage", finalBodyImage, finalBodyImage.name);
+                console.log("[Client] Uploading body image...");
+                const bodyResult = await uploadImageToWP(finalBodyImage, 'body');
+                bodyMediaUrl = bodyResult.url;
+                console.log("[Client] Body image uploaded:", bodyMediaUrl);
             }
 
+            // 4. Clean Content - Remove internal image prompt comments
+            const cleanHtml = htmlContent.replace(/<!--\s*\[IMAGE_PROMPT_START\][\s\S]*?\[IMAGE_PROMPT_END\]\s*-->/g, "").trim();
+
+            // 5. Publish post with JSON (small payload - no images)
             const res = await fetch("/api/wordpress/post", {
                 method: "POST",
-                body: formData
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    htmlContent: cleanHtml,
+                    featuredMediaId: featuredMediaId,
+                    featuredMediaUrl: featuredMediaUrl,
+                    bodyMediaUrl: bodyMediaUrl
+                })
             })
 
             const data = await res.json()
@@ -179,8 +216,9 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
                 setResult({ success: false, error: data.error || "알 수 없는 오류" })
             }
 
-        } catch (e) {
-            setResult({ success: false, error: "네트워크 오류 발생" })
+        } catch (e: any) {
+            console.error("[Client] Publish error:", e);
+            setResult({ success: false, error: e.message || "네트워크 오류 발생" })
         } finally {
             setIsPublishing(false)
         }

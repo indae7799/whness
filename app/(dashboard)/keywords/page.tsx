@@ -652,33 +652,65 @@ function DraftsManager({ onRestore, onRefreshNeeded }: { onRestore: (draft: any)
             // This is actually safer than simulating clicks.
 
             try {
-                // Prepare FormData from draft data (since we have URLs, we need to handle them)
-                // The API needs 'featuredImage' as File... or we modify API to accept URL.
-                // We modified API to try... wait, we didn't fully modify API to accept URL for featured.
-                // Drafts serve URLs. 
+                // NEW: Upload images separately first, then publish with JSON
+                // This avoids Vercel's body size limits
 
-                // Workaround: We download the images to Blobs here, then send to API.
-                const formData = new FormData();
-                formData.append("title", draft.title);
-                formData.append("htmlContent", draft.content);
+                const uploadImageToWP = async (url: string, type: 'featured' | 'body') => {
+                    // Fetch blob from URL
+                    const blob = await fetch(url).then(r => r.blob());
 
-                // Fetch Images
+                    const formData = new FormData();
+                    formData.append("image", blob, `${type}-image.png`);
+                    formData.append("type", type);
+
+                    const res = await fetch("/api/wordpress/upload-image", {
+                        method: "POST",
+                        body: formData
+                    });
+
+                    if (!res.ok) {
+                        const errData = await res.json();
+                        throw new Error(`Image upload failed: ${errData.error || res.status}`);
+                    }
+
+                    return await res.json();
+                };
+
+                // Find images from draft
                 const featured = draft.images.find((img: any) => img.type === 'featured');
                 const body = draft.images.find((img: any) => img.type === 'section');
 
+                let featuredMediaId: number | null = null;
+                let featuredMediaUrl: string | null = null;
+                let bodyMediaUrl: string | null = null;
+
+                // Upload featured image
                 if (featured) {
-                    const b = await fetch(featured.url).then(r => r.blob());
-                    formData.append("featuredImage", b, "thumb.png");
-                }
-                if (body) {
-                    const b = await fetch(body.url).then(r => r.blob());
-                    formData.append("bodyImage", b, "body.png");
+                    setLogs(prev => [...prev, `📸 Uploading featured image...`]);
+                    const result = await uploadImageToWP(featured.url, 'featured');
+                    featuredMediaId = result.id;
+                    featuredMediaUrl = result.url;
                 }
 
-                // Publish
+                // Upload body image
+                if (body) {
+                    setLogs(prev => [...prev, `📷 Uploading body image...`]);
+                    const result = await uploadImageToWP(body.url, 'body');
+                    bodyMediaUrl = result.url;
+                }
+
+                // Publish with JSON (small payload)
                 const res = await fetch("/api/wordpress/post", {
                     method: "POST",
-                    body: formData
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        htmlContent: draft.content,
+                        featuredMediaId: featuredMediaId,
+                        featuredMediaUrl: featuredMediaUrl,
+                        bodyMediaUrl: bodyMediaUrl
+                    })
                 });
 
                 if (res.ok) {

@@ -1,0 +1,7 @@
+{
+    "functions": {
+        "app/api/wordpress/post/route.ts": {
+            "maxDuration": 60
+        }
+    }
+}
