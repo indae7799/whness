@@ -1,7 +1,16 @@
 {
     "functions": {
         "app/api/wordpress/post/route.ts": {
-            "maxDuration": 60
+            "maxDuration": 60,
+            "memory": 1024
+        },
+        "app/api/wordpress/upload-image/route.ts": {
+            "maxDuration": 60,
+            "memory": 1024
+        },
+        "app/api/articles/draft/route.ts": {
+            "maxDuration": 60,
+            "memory": 1024
         }
     }
 }

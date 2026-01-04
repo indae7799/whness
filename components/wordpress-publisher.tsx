@@ -82,29 +82,76 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
 
         setIsPublishing(true);
         try {
-            const formData = new FormData();
-
             // Generate a simple title from H1 or timestamp
             let title = "Draft " + new Date().toLocaleString();
             const h1Match = htmlContent.match(/<h1[^>]*>(.*?)<\/h1>/i);
             if (h1Match && h1Match[1]) {
                 title = h1Match[1].replace(/<[^>]*>/g, "");
             }
-            formData.append("title", title);
-            formData.append("htmlContent", htmlContent);
 
-            // Images
+            // Get images
             let featuredBlob: Blob | null = null;
             if (getFeaturedImage) featuredBlob = await getFeaturedImage();
-
             const finalBodyImage = bodyImageFile || defaultBodyImage;
 
-            if (featuredBlob) formData.append("thumbnailImage", featuredBlob, "thumb.png");
-            if (finalBodyImage) formData.append("bodyImage", finalBodyImage, finalBodyImage.name);
+            // Upload images directly to Supabase from client-side (avoids Vercel 4.5MB limit)
+            let thumbnailUrl: string | null = null;
+            let bodyImageUrl: string | null = null;
 
+            const timestamp = Date.now();
+            const userId = "default-user"; // Will be replaced by actual user in API
+
+            // Helper: Upload to Supabase directly from client
+            const uploadToSupabase = async (file: Blob | File, subDir: string, fileName: string): Promise<string | null> => {
+                const { createClient } = await import('@supabase/supabase-js');
+                const supabase = createClient(
+                    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+                );
+                const bucketName = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "whness-blog";
+                const path = `${subDir}/${userId}/${timestamp}-${fileName}`;
+
+                const arrayBuffer = await file.arrayBuffer();
+                const { error: uploadError } = await supabase.storage.from(bucketName).upload(path, arrayBuffer, {
+                    contentType: file.type || "image/png",
+                    upsert: false
+                });
+
+                if (uploadError) {
+                    console.error(`[Client] Supabase upload error (${path}):`, uploadError.message);
+                    throw new Error(`Supabase Upload Error: ${uploadError.message}`);
+                }
+
+                const { data: publicUrlData } = supabase.storage.from(bucketName).getPublicUrl(path);
+                return publicUrlData.publicUrl;
+            };
+
+            // Upload images to Supabase directly (client-side)
+            if (featuredBlob) {
+                console.log("[Client] Uploading thumbnail to Supabase...");
+                thumbnailUrl = await uploadToSupabase(featuredBlob, "thumbnails", "thumb.png");
+                console.log("[Client] Thumbnail uploaded:", thumbnailUrl);
+            }
+
+            if (finalBodyImage) {
+                console.log("[Client] Uploading body image to Supabase...");
+                const fileName = finalBodyImage instanceof File ? finalBodyImage.name : "body.png";
+                bodyImageUrl = await uploadToSupabase(finalBodyImage, "raw", fileName);
+                console.log("[Client] Body image uploaded:", bodyImageUrl);
+            }
+
+            // Send only URLs to API (small payload, no 413 error)
             const res = await fetch("/api/articles/draft", {
                 method: "POST",
-                body: formData
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    title,
+                    htmlContent,
+                    thumbnailUrl,
+                    bodyImageUrl
+                })
             });
 
             if (res.ok) {
@@ -115,9 +162,9 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
                 const errorData = await res.json();
                 alert(`저장 실패: ${errorData.error || "알 수 없는 오류"}`);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            alert("저장 중 오류 발생");
+            alert(`저장 중 오류 발생: ${e.message || "Unknown error"}`);
         } finally {
             setIsPublishing(false);
         }

@@ -3,6 +3,15 @@ import { NextResponse } from "next/server";
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
+// Increase body size limit to 50MB to prevent 413 errors
+export const config = {
+    api: {
+        bodyParser: {
+            sizeLimit: '50mb',
+        },
+    },
+};
+
 export async function POST(req: Request) {
     console.log("[API] Starting WordPress Auto-Publish with Rank Math SEO...");
 

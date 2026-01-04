@@ -5,11 +5,64 @@ export async function POST(req: Request) {
     console.log("[API] Starting Draft Save...");
 
     try {
-        const formData = await req.formData();
-        const title = formData.get("title") as string || "Untitled Draft";
-        const htmlContent = formData.get("htmlContent") as string;
-        const thumbnailFile = formData.get("thumbnailImage") as File;
-        const bodyImageFile = formData.get("bodyImage") as File;
+        // Check content type to determine how to parse request
+        const contentType = req.headers.get("content-type") || "";
+
+        let title = "Untitled Draft";
+        let htmlContent = "";
+        let thumbnailUrl: string | null = null;
+        let bodyImageUrl: string | null = null;
+
+        if (contentType.includes("application/json")) {
+            // NEW: JSON payload (images already uploaded to Supabase from client)
+            const jsonData = await req.json();
+            title = jsonData.title || "Untitled Draft";
+            htmlContent = jsonData.htmlContent || "";
+            thumbnailUrl = jsonData.thumbnailUrl || null;
+            bodyImageUrl = jsonData.bodyImageUrl || null;
+            console.log("[API] Received JSON payload with pre-uploaded image URLs");
+        } else {
+            // LEGACY: FormData with embedded images (may hit size limits)
+            const formData = await req.formData();
+            title = formData.get("title") as string || "Untitled Draft";
+            htmlContent = formData.get("htmlContent") as string;
+            const thumbnailFile = formData.get("thumbnailImage") as File;
+            const bodyImageFile = formData.get("bodyImage") as File;
+
+            // Upload images to Supabase (legacy support)
+            const { createClient } = await import('@supabase/supabase-js');
+            const supabase = createClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+            );
+            const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "whness-blog";
+            const timestamp = Date.now();
+
+            const uploadFile = async (file: File, subDir: string) => {
+                if (!file || file.size === 0) return null;
+
+                const fileName = `${timestamp}-${file.name.replace(/\s/g, '_') || "image.png"}`;
+                const path = `${subDir}/default-user/${fileName}`;
+                const buffer = await file.arrayBuffer();
+
+                const { error: uploadError } = await supabase.storage.from(bucketName).upload(path, buffer, {
+                    contentType: file.type || "image/png",
+                    upsert: false
+                });
+
+                if (uploadError) {
+                    console.error(`[API] Storage Error (${path}):`, uploadError.message);
+                    throw new Error(`Supabase Storage Error: ${uploadError.message}. Check Bucket RLS/Policies.`);
+                }
+
+                const { data: publicUrlData } = supabase.storage.from(bucketName).getPublicUrl(path);
+                return publicUrlData.publicUrl;
+            };
+
+            thumbnailUrl = await uploadFile(thumbnailFile, "thumbnails");
+            bodyImageUrl = await uploadFile(bodyImageFile, "raw");
+            console.log("[API] Received FormData with embedded images (legacy)");
+        }
 
         // 1. User Validation
         let user = await prisma.user.findFirst();
@@ -23,7 +76,7 @@ export async function POST(req: Request) {
             });
         }
 
-        // 2. Extract SEO Metadata from HTML (Ensuring variables exist)
+        // 2. Extract SEO Metadata from HTML
         let focusKeyword = "Draft";
         let metaDescription = "Draft auto-save";
 
@@ -35,48 +88,9 @@ export async function POST(req: Request) {
             if (descMatch) metaDescription = descMatch[1].trim();
         }
 
-        // 3. Supabase Storage Setup (Safe Client)
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        );
-        const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "whness-blog";
         const timestamp = Date.now();
 
-        const uploadFile = async (file: File, subDir: string) => {
-            if (!file || file.size === 0) return null;
-
-            const fileName = `${timestamp}-${file.name.replace(/\s/g, '_') || "image.png"}`;
-            const path = `${subDir}/${user!.id}/${fileName}`;
-            const buffer = await file.arrayBuffer();
-
-            const { error: uploadError } = await supabase.storage.from(bucketName).upload(path, buffer, {
-                contentType: file.type || "image/png",
-                upsert: false
-            });
-
-            if (uploadError) {
-                console.error(`[API] Storage Error (${path}):`, uploadError.message);
-                throw new Error(`Supabase Storage Error: ${uploadError.message}. Check Bucket RLS/Policies.`);
-            }
-
-            const { data: publicUrlData } = supabase.storage.from(bucketName).getPublicUrl(path);
-            return publicUrlData.publicUrl;
-        };
-
-        // Upload and handle failures
-        let thumbnailUrl = null;
-        let bodyImageUrl = null;
-
-        try {
-            thumbnailUrl = await uploadFile(thumbnailFile, "thumbnails");
-            bodyImageUrl = await uploadFile(bodyImageFile, "raw");
-        } catch (e: any) {
-            return NextResponse.json({ error: e.message }, { status: 500 });
-        }
-
-        // 4. Database Transaction (Atomic)
+        // 3. Database Transaction (Atomic)
         const article = await prisma.article.create({
             data: {
                 userId: user.id,
