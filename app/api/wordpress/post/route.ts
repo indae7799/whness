@@ -57,56 +57,96 @@ export async function POST(req: Request) {
 
         if (finalFeatured) {
             console.log("[API] Uploading Featured Image...");
-            // Upload Featured Image
             const mediaData = await uploadImage(finalFeatured);
             featuredMediaId = mediaData.id;
         }
 
         if (finalBody) {
             console.log("[API] Uploading Body Image...");
-            // Upload Body Image
-            // Even if same file, uploading again ensures distinct attachment ID/URL usage if needed, 
-            // but realistically we could optimize. For safety and distinct alt text potential, upload separately.
             const mediaData = await uploadImage(finalBody);
             bodyImageUrl = mediaData.source_url;
         }
 
-        // 3. Parse Content
+        // 3. Clean Content - Remove META info from beginning
+        let finalContent = htmlContent;
+
+        // Remove META TITLE, META DESCRIPTION, FOCUS KEYWORD lines
+        finalContent = finalContent.replace(/META TITLE[^<\n]*/gi, "");
+        finalContent = finalContent.replace(/META DESCRIPTION[^<\n]*/gi, "");
+        finalContent = finalContent.replace(/FOCUS KEYWORD[^<\n]*/gi, "");
+        finalContent = finalContent.replace(/URL SLUG[^<\n]*/gi, "");
+
+        // Remove image prompt comments
+        finalContent = finalContent.replace(/<!--\s*\[IMAGE_PROMPT_START\][\s\S]*?\[IMAGE_PROMPT_END\]\s*-->/g, "");
+
+        // Remove leading "..." or empty lines
+        finalContent = finalContent.replace(/^\s*\.\.\.\s*/gm, "");
+        finalContent = finalContent.trim();
+
+        // 4. Parse Title from H1
         let title = "Untitled Blog Post";
-        const h1Match = htmlContent.match(/<h1[^>]*>(.*?)<\/h1>/i);
+        const h1Match = finalContent.match(/<h1[^>]*>(.*?)<\/h1>/i);
         if (h1Match && h1Match[1]) {
             title = h1Match[1].replace(/<[^>]*>/g, "");
         }
 
-        // 4. Inject Body Image (if exists)
-        let finalContent = htmlContent;
+        // 5. Add 60px top margin to H1 (keep H1 in content!)
+        if (h1Match) {
+            finalContent = finalContent.replace(
+                h1Match[0],
+                h1Match[0].replace("<h1", '<h1 style="margin-top: 60px;"')
+            );
+        }
+
+        // 6. Inject Body Image AFTER first paragraph (intro)
         if (bodyImageUrl) {
             const imageHtml = `
-                <figure class="wp-block-image size-full">
-                    <img src="${bodyImageUrl}" alt="${title}" style="width:100%; height:auto; border-radius:8px; margin-bottom: 32px;" />
+                <figure class="wp-block-image size-full" style="margin-top: 32px; margin-bottom: 32px;">
+                    <img src="${bodyImageUrl}" alt="${title}" style="width:100%; height:auto; border-radius:8px;" />
                 </figure>
             `;
 
-            if (finalContent.includes("[INSERT_IMAGE_HERE]")) {
+            // Find first </p> after H1 (the intro paragraph)
+            const introEndMatch = finalContent.match(/<\/h1>[\s\S]*?<\/p>/i);
+            if (introEndMatch) {
+                const insertPosition = finalContent.indexOf(introEndMatch[0]) + introEndMatch[0].length;
+                finalContent = finalContent.slice(0, insertPosition) + imageHtml + finalContent.slice(insertPosition);
+            } else if (finalContent.includes("[INSERT_IMAGE_HERE]")) {
                 finalContent = finalContent.replace("[INSERT_IMAGE_HERE]", imageHtml);
-            } else if (h1Match) {
-                finalContent = finalContent.replace("</h1>", "</h1>" + imageHtml);
             } else {
-                finalContent = imageHtml + finalContent; // Prepend
+                // Fallback: after first paragraph
+                const firstPEnd = finalContent.indexOf("</p>");
+                if (firstPEnd !== -1) {
+                    finalContent = finalContent.slice(0, firstPEnd + 4) + imageHtml + finalContent.slice(firstPEnd + 4);
+                }
             }
         }
 
-        if (h1Match) {
-            finalContent = finalContent.replace(h1Match[0], "");
+        // 7. Get blog category ID
+        let blogCategoryId = 1; // Default to uncategorized
+        try {
+            const catRes = await fetch(`${wpUrl}/wp-json/wp/v2/categories?slug=blog`, {
+                headers: { "Authorization": authHeader }
+            });
+            if (catRes.ok) {
+                const categories = await catRes.json();
+                if (categories.length > 0) {
+                    blogCategoryId = categories[0].id;
+                }
+            }
+        } catch (e) {
+            console.log("[API] Could not fetch blog category, using default");
         }
 
-        // 5. Create Post
+        // 8. Create Post with category and template
         console.log("[API] Creating Post...");
         const postData = {
             title: title,
             content: finalContent,
             status: 'publish',
-            featured_media: featuredMediaId
+            featured_media: featuredMediaId,
+            categories: [blogCategoryId],
+            template: 'elementor_canvas'
         };
 
         const postRes = await fetch(`${wpUrl}/wp-json/wp/v2/posts`, {
