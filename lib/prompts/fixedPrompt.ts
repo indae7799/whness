@@ -173,4 +173,19 @@ HUMAN TOUCH (Override All Technical Rules):
 
 FAIL CONDITIONS:
 If any rule below is not met, the content is considered a failure. Revise before output.
+
+**IMAGE PROMPT GENERATION (FINAL STEP):**
+At the very end of your output, AFTER the HTML content, you MUST include a secret section for image generation. This MUST be inside an HTML comment AND use specific tags so the system can extract it.
+
+Format:
+<!-- 
+[IMAGE_PROMPT_START]
+Editorial photography of [A specific scene from your intro], New York City atmosphere, cinematic lighting, shallow depth of field, shot on Sony A7R IV, 8k resolution, highly detailed, realistic texture, 16:9 aspect ratio --ar 16:9 --v 6.0
+[IMAGE_PROMPT_END]
+-->
+
+Rules for Image Prompt:
+1. Focus on the STORY: If you wrote about "walking in Brooklyn in the rain", the prompt must describe that.
+2. Direct descriptors only. No "Here is the prompt".
+3. Style must be "New York Editorial Photography".
 `;

@@ -153,24 +153,15 @@ export default function KeywordGeneratorPage() {
         try {
             let promptText = "";
 
-            // 1. If we have content in the editor, use Backend AI to analyze it
-            if (editorHtml && editorHtml.length > 100) {
-                const res = await fetch("/api/generation/image-prompt", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        content: editorHtml,
-                        focusKeyword: targetFocusKeyword || targetLongTailKeyword
-                    })
-                });
-
-                if (res.ok) {
-                    const data = await res.json();
-                    promptText = data.prompt;
+            // 1. Try to extract from the editor content first (The [IMAGE_PROMPT_START] region)
+            if (editorHtml) {
+                const match = editorHtml.match(/\[IMAGE_PROMPT_START\]([\s\S]*?)\[IMAGE_PROMPT_END\]/);
+                if (match && match[1]) {
+                    promptText = match[1].trim();
                 }
             }
 
-            // 2. Fallback: If no content or API failed, use the Direct Template
+            // 2. Fallback: If not found in editor, use a generic template (Free & Zero-Token)
             if (!promptText) {
                 const keyword = targetLongTailKeyword || targetFocusKeyword || "New York Lifestyle";
                 promptText = `Editorial photography of ${keyword}, New York City atmosphere, cinematic lighting, shallow depth of field, shot on Sony A7R IV, 8k resolution, highly detailed, realistic texture, 16:9 aspect ratio --ar 16:9 --v 6.0`;
@@ -178,11 +169,11 @@ export default function KeywordGeneratorPage() {
 
             // 3. Copy to clipboard
             await navigator.clipboard.writeText(promptText);
-            alert("이미지 프롬프트가 복사되었습니다! (Flow/Midjourney용)");
+            alert("이미지 프롬프트가 복사되었습니다! (본문 기반 분석 완료)");
 
         } catch (error) {
-            console.error("Failed to generate prompt", error);
-            alert("프롬프트 생성 실패. 기본 템플릿을 사용합니다.");
+            console.error("Failed to copy prompt", error);
+            alert("복사 실패.");
         } finally {
             setIsGeneratingPrompt(false);
         }

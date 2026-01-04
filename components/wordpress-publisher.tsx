@@ -147,8 +147,11 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
                 return;
             }
 
+            // Clean Content - Remove internal image prompt comments
+            const cleanHtml = htmlContent.replace(/<!--\s*\[IMAGE_PROMPT_START\][\s\S]*?\[IMAGE_PROMPT_END\]\s*-->/g, "").trim();
+
             const formData = new FormData()
-            formData.append("htmlContent", htmlContent)
+            formData.append("htmlContent", cleanHtml)
 
             if (featuredBlob) {
                 formData.append("featuredImage", featuredBlob, "thumbnail-featured.png");
