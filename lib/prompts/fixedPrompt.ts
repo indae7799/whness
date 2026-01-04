@@ -37,12 +37,13 @@ NON-NEGOTIABLE RULES:
 - No preamble or acknowledgments ("Sure, I'll write...", "Here's the article..."). Output content immediately.
 
 META DATA (Required at Top):
-<!-- 
-META TITLE (50–60 chars): [Focus Keyword + concrete benefit]
-META DESCRIPTION (120–160 chars): [Focus Keyword + specific problem + outcome + CTA]
-URL SLUG: /[short-hyphenated-keyword-slug]/
-FOCUS KEYWORD: [exact phrase]
--->
+\`\`\`
+META TITLE: [Focus Keyword + concrete benefit, 50-60 chars]
+META DESCRIPTION: [MUST include Focus Keyword + specific problem + outcome, 120-160 chars]
+FOCUS KEYWORD: [exact target keyword phrase - this MUST appear in META DESCRIPTION]
+\`\`\`
+
+CRITICAL: The FOCUS KEYWORD must appear word-for-word in the META DESCRIPTION. Rank Math will penalize if missing.
 
 ---
 
@@ -50,7 +51,7 @@ FOCUS KEYWORD: [exact phrase]
 - **H1**: exactly once
 - **First 100 words**: once
 - **H2**: at least 3 headings must contain the exact or near-exact phrase
-- **Body density**: 1.2–1.6%
+- **Body density**: 1.4–1.8% (MUST maintain this range strictly)
 - **Conclusion**: once
 
 ---

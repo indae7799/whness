@@ -14,6 +14,7 @@ export async function POST(req: Request) {
         let featuredMediaId: number | null = null;
         let featuredMediaUrl: string | null = null;
         let bodyMediaUrl: string | null = null;
+        let clientFocusKeyword = ""; // NEW: From client (thumbnail title)
 
         if (contentType.includes("application/json")) {
             // NEW: JSON payload (images already uploaded separately)
@@ -22,8 +23,9 @@ export async function POST(req: Request) {
             featuredMediaId = jsonData.featuredMediaId || null;
             featuredMediaUrl = jsonData.featuredMediaUrl || null;
             bodyMediaUrl = jsonData.bodyMediaUrl || null;
+            clientFocusKeyword = jsonData.focusKeyword || ""; // Capture thumbnail title
 
-            console.log("[API] Received JSON payload with pre-uploaded images");
+            console.log("[API] Received JSON payload, focusKeyword:", clientFocusKeyword);
         } else {
             // LEGACY: FormData with embedded images (may hit size limits)
             const formData = await req.formData();
@@ -87,18 +89,40 @@ export async function POST(req: Request) {
 
         const authHeader = `Basic ${Buffer.from(`${wpUser}:${wpPass}`).toString("base64")}`;
 
-        // SEO Extraction FIRST (Before any cleaning!)
+        // SEO Extraction - Prioritize client-provided focusKeyword (thumbnail title)
         let focusKeyword = "";
         let metaDesc = "";
 
-        const kwMatch = htmlContent.match(/FOCUS\s*KEYWORD[:\s]+([^\r\n<]+)/i);
-        if (kwMatch) {
-            focusKeyword = kwMatch[1].replace(/['"]/g, '').trim();
+        // 1. PRIORITY: Use client-provided focusKeyword (thumbnail title)
+        if (clientFocusKeyword) {
+            focusKeyword = clientFocusKeyword;
+            console.log("[API] Using client-provided focusKeyword:", focusKeyword);
+        } else {
+            // 2. Fallback: Try to extract from HTML content
+            const kwMatch = htmlContent.match(/FOCUS\s*KEYWORD[:\s]+([^\r\n<]+)/i);
+            if (kwMatch) {
+                focusKeyword = kwMatch[1].replace(/['"]/g, '').trim();
+            }
         }
 
+        // Extract meta description from HTML
         const descMatch = htmlContent.match(/META\s*DESCRIPTION[:\s]+([^\r\n<]+)/i);
         if (descMatch) {
             metaDesc = descMatch[1].replace(/['"]/g, '').trim();
+        }
+
+        // IMPORTANT: If meta description doesn't contain focus keyword, append it
+        if (focusKeyword && metaDesc && !metaDesc.toLowerCase().includes(focusKeyword.toLowerCase())) {
+            // Construct a new meta description that includes the focus keyword
+            metaDesc = `${focusKeyword}: ${metaDesc}`;
+            if (metaDesc.length > 160) {
+                metaDesc = metaDesc.substring(0, 157) + "...";
+            }
+        }
+
+        // If no meta description at all, create one with focus keyword
+        if (!metaDesc && focusKeyword) {
+            metaDesc = `Complete guide to ${focusKeyword}. Expert tips, step-by-step instructions, and everything you need to know.`;
         }
 
         console.log("[API] Extracted SEO Data:", { focusKeyword, metaDesc });

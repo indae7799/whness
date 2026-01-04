@@ -15,9 +15,10 @@ interface WordPressPublisherProps {
     initialBodyImageSrc?: string | null;
     onHtmlChange?: (html: string) => void;
     onDraftSaved?: () => void;
+    focusKeyword?: string; // NEW: The keyword used for thumbnail title, to be sent to Rank Math
 }
 
-export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initialHtmlContent, initialBodyImageSrc, onHtmlChange, onDraftSaved }: WordPressPublisherProps) {
+export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initialHtmlContent, initialBodyImageSrc, onHtmlChange, onDraftSaved, focusKeyword }: WordPressPublisherProps) {
     const [htmlContent, setHtmlContent] = useState("")
     const [bodyImageFile, setBodyImageFile] = useState<File | null>(null)
     const [isPublishing, setIsPublishing] = useState(false)
@@ -202,7 +203,8 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
                     htmlContent: cleanHtml,
                     featuredMediaId: featuredMediaId,
                     featuredMediaUrl: featuredMediaUrl,
-                    bodyMediaUrl: bodyMediaUrl
+                    bodyMediaUrl: bodyMediaUrl,
+                    focusKeyword: focusKeyword || "" // Pass thumbnail title as focus keyword
                 })
             })
 

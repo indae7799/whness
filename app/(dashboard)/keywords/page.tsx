@@ -519,6 +519,7 @@ export default function KeywordGeneratorPage() {
                         defaultBodyImage={rawImageFile}
                         initialHtmlContent={initialHtmlContent}
                         initialBodyImageSrc={initialBodyImageSrc}
+                        focusKeyword={targetLongTailKeyword || targetFocusKeyword}
                         getFeaturedImage={async () => {
                             if (thumbnailRef.current?.getThumbnailBlob) {
                                 return await thumbnailRef.current.getThumbnailBlob();
