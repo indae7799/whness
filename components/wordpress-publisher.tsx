@@ -25,6 +25,10 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
     const [result, setResult] = useState<{ success: boolean; link?: string; error?: string } | null>(null)
     const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
+    // NEW: Track existing Supabase URLs (to avoid re-uploading)
+    const [existingBodyImageUrl, setExistingBodyImageUrl] = useState<string | null>(null)
+    const [userChangedBodyImage, setUserChangedBodyImage] = useState(false)
+
     // Sync initial content
     useEffect(() => {
         if (initialHtmlContent) {
@@ -36,17 +40,10 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
     useEffect(() => {
         if (initialBodyImageSrc) {
             setPreviewUrl(initialBodyImageSrc);
-            // Note: We cannot set bodyImageFile (File) from a URL easily without fetching.
-            // If the user publishes WITHOUT changing this image, we need logic to handle "Use Remote URL" 
-            // OR we fetch it here to create a File/Blob.
-            // Fetching it here is safer for the existing 'FormData' logic.
-            fetch(initialBodyImageSrc)
-                .then(res => res.blob())
-                .then(blob => {
-                    const file = new File([blob], "restored-body.png", { type: blob.type });
-                    setBodyImageFile(file);
-                })
-                .catch(err => console.error("Failed to restore body image file", err));
+            // Store the existing URL so we don't re-upload
+            setExistingBodyImageUrl(initialBodyImageSrc);
+            setUserChangedBodyImage(false);
+            // Don't fetch and convert to File anymore - we'll use URL directly
         }
     }, [initialBodyImageSrc]);
 
@@ -54,6 +51,8 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
     useEffect(() => {
         if (defaultBodyImage) {
             setBodyImageFile(defaultBodyImage)
+            setUserChangedBodyImage(true) // This is a new image
+            setExistingBodyImageUrl(null)
             const reader = new FileReader()
             reader.onload = (ev) => {
                 setPreviewUrl(ev.target?.result as string)
@@ -66,6 +65,8 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
         const file = e.target.files?.[0]
         if (file) {
             setBodyImageFile(file)
+            setUserChangedBodyImage(true) // User manually selected a new image
+            setExistingBodyImageUrl(null)
             const reader = new FileReader()
             reader.onload = (ev) => {
                 setPreviewUrl(ev.target?.result as string)
@@ -99,7 +100,7 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
             let bodyImageUrl: string | null = null;
 
             const timestamp = Date.now();
-            const userId = "default-user"; // Will be replaced by actual user in API
+            const userId = "default-user";
 
             // Helper: Upload to Supabase directly from client
             const uploadToSupabase = async (file: Blob | File, subDir: string, fileName: string): Promise<string | null> => {
@@ -126,15 +127,21 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
                 return publicUrlData.publicUrl;
             };
 
-            // Upload images to Supabase directly (client-side)
+            // Upload thumbnail (always upload as it's generated fresh)
             if (featuredBlob) {
                 console.log("[Client] Uploading thumbnail to Supabase...");
                 thumbnailUrl = await uploadToSupabase(featuredBlob, "thumbnails", "thumb.png");
                 console.log("[Client] Thumbnail uploaded:", thumbnailUrl);
             }
 
-            if (finalBodyImage) {
-                console.log("[Client] Uploading body image to Supabase...");
+            // For body image: Use existing URL if not changed, otherwise upload new
+            if (existingBodyImageUrl && !userChangedBodyImage) {
+                // Image wasn't changed - reuse existing Supabase URL (NO re-upload!)
+                console.log("[Client] Reusing existing body image URL:", existingBodyImageUrl);
+                bodyImageUrl = existingBodyImageUrl;
+            } else if (finalBodyImage) {
+                // New image or user changed it - upload to Supabase
+                console.log("[Client] Uploading new body image to Supabase...");
                 const fileName = finalBodyImage instanceof File ? finalBodyImage.name : "body.png";
                 bodyImageUrl = await uploadToSupabase(finalBodyImage, "raw", fileName);
                 console.log("[Client] Body image uploaded:", bodyImageUrl);
