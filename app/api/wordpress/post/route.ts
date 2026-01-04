@@ -23,9 +23,9 @@ export async function POST(req: Request) {
         }
 
         // 1. Credentials Check
-        const wpUrl = process.env.WORDPRESS_URL;
-        const wpUser = process.env.WORDPRESS_USERNAME;
-        const wpPass = process.env.WORDPRESS_APP_PASSWORD;
+        const wpUrl = process.env.WORDPRESS_URL || process.env.WP_BASE_URL;
+        const wpUser = process.env.WORDPRESS_USERNAME || process.env.WP_USERNAME;
+        const wpPass = process.env.WORDPRESS_APP_PASSWORD || process.env.WP_APP_PASSWORD;
 
         if (!wpUrl || !wpUser || !wpPass) {
             console.error("Missing WP Credentials in .env");
