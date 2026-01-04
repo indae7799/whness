@@ -28,7 +28,7 @@ export async function POST(req: Request) {
 
         // 2. Upload Images to Supabase Storage
         const supabase = await createClient();
-        const bucketName = "blog-assets"; // User needs to create this bucket in Supabase Dashboard -> Storage
+        const bucketName = "whness-blog"; // Supabase Storage bucket
 
         // Helper to upload
         const uploadToSupabase = async (file: File, path: string) => {
