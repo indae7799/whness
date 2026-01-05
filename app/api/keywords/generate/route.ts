@@ -358,6 +358,7 @@ function analyzeKeywordMetrics(keyword: string, seed: string, source: string, ra
 
     if (highValueWords.some(w => lowerKeyword.includes(w))) {
         factors.intentValue = 90;
+        factors.competition -= 10; // High-value commercial keywords are worth pursuing
         intent = "수익형 (비교)";
     } else if (commercialWords.some(w => lowerKeyword.includes(w))) {
         factors.intentValue = 85;
