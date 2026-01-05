@@ -8,6 +8,14 @@ import { Card } from "@/components/ui/card"
 import { ThumbnailGenerator } from "@/components/thumbnail-generator"
 import { WordPressPublisher } from "@/components/wordpress-publisher"
 
+interface KeywordStrategy {
+    issue: string;
+    expandedKeywords: string[];
+    questionKeywords: string[];
+    tactics: string[];
+    contentAngle: string;
+}
+
 interface LongTailSuggestion {
     keyword: string
     volume: string
@@ -15,6 +23,7 @@ interface LongTailSuggestion {
     cpc: string
     intent: string
     score: number
+    strategy?: KeywordStrategy // NEW: Attack strategy for low-scoring keywords
 }
 
 interface GeneratedKeyword {
@@ -27,7 +36,7 @@ interface GeneratedKeyword {
     competition: string
     score: number
     suggestions: LongTailSuggestion[]
-    peopleAlsoAsk?: string[] // NEW: PAA questions extracted from Google
+    peopleAlsoAsk?: string[] // PAA questions extracted from Google
 }
 
 export default function KeywordGeneratorPage() {
@@ -38,6 +47,7 @@ export default function KeywordGeneratorPage() {
     const [selectedKeywordObj, setSelectedKeywordObj] = useState<GeneratedKeyword | null>(null) // UI showing analysis for this
     const [targetFocusKeyword, setTargetFocusKeyword] = useState<string>("")
     const [targetLongTailKeyword, setTargetLongTailKeyword] = useState<string>("")
+    const [selectedStrategy, setSelectedStrategy] = useState<KeywordStrategy | null>(null) // NEW: Strategy for selected keyword
 
     const [copied, setCopied] = useState(false)
 
@@ -97,12 +107,15 @@ export default function KeywordGeneratorPage() {
         setSelectedKeywordObj(k)
         setTargetFocusKeyword(k.term)
         setTargetLongTailKeyword("") // Reset long-tail when switching focus
+        setSelectedStrategy(null) // Reset strategy
     }
 
     // Handles clicking a Long-tail row
     const handleLongTailClick = (s: LongTailSuggestion) => {
         setTargetLongTailKeyword(s.keyword)
+        setSelectedStrategy(s.strategy || null) // Store the strategy if available
     }
+
 
     const handleReset = () => {
         setTargetFocusKeyword("")
@@ -113,6 +126,37 @@ export default function KeywordGeneratorPage() {
     const constructContentPrompt = () => {
         if (!targetFocusKeyword && !targetLongTailKeyword) return "키워드를 선택하면 글 작성 프롬프트가 생성됩니다.";
 
+        // Build strategy section if available
+        let strategySection = "";
+        if (selectedStrategy) {
+            strategySection = `
+
+---
+
+**[SEO 공략 전략 - AI 분석 결과]**
+
+⚠️ **키워드 분석 이슈**: ${selectedStrategy.issue}
+
+📌 **확장 롱테일 키워드 (본문/H2에 활용)**:
+${selectedStrategy.expandedKeywords.map(k => `- "${k}"`).join('\n')}
+
+❓ **People Also Ask (FAQ 섹션에 활용)**:
+${selectedStrategy.questionKeywords.map(q => `- "${q}"`).join('\n')}
+
+🎯 **콘텐츠 전략**:
+${selectedStrategy.tactics.map(t => `- ${t}`).join('\n')}
+
+📝 **권장 콘텐츠 방향**:
+${selectedStrategy.contentAngle}
+
+---
+**[위 전략을 반드시 글에 반영하세요]**
+- 확장 키워드를 H2 소제목으로 활용
+- PAA 질문들을 FAQ 섹션에 포함
+- 권장 콘텐츠 방향에 맞게 구성
+`;
+        }
+
         return `${FIXED_PROMPT_CONTENT}
 
 ---
@@ -121,7 +165,7 @@ export default function KeywordGeneratorPage() {
 
 1. **메인 주제(Title Topic)**: "${targetLongTailKeyword}" (이 키워드가 글의 핵심 주제입니다.)
 2. **SEO 서브 키워드**: "${targetFocusKeyword}" (이 키워드를 본문에 자연스럽게 녹여 SEO 점수를 높이세요.)
-
+${strategySection}
 **[작성 지시 - 필독]**
 - **언어**: 반드시 **미국식 영어(English US)**로 작성하세요. (Target Audience: US Seniors)
 - **제목(H1)**: 메인 주제("${targetLongTailKeyword}")를 포함하여 클릭을 유도하는 매력적인 제목을 지으세요.

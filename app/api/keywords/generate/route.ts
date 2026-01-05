@@ -418,6 +418,14 @@ function analyzeKeywordMetrics(keyword: string, seed: string, source: string, ra
         freshnessLabel = "좋음";
     }
 
+    // =====================
+    // GENERATE STRATEGY FOR LOW-SCORING KEYWORDS
+    // =====================
+    let strategy = null;
+    if (finalScore < 60) {
+        strategy = generateKeywordStrategy(keyword, factors, finalScore);
+    }
+
     return {
         keyword: keyword,
         score: finalScore,
@@ -425,7 +433,7 @@ function analyzeKeywordMetrics(keyword: string, seed: string, source: string, ra
         intent: intent,
         volume: volStr,
         freshness: freshnessLabel,
-        // Debug info (optional, can be shown in UI)
+        strategy: strategy, // NEW: Attack strategy for low-scoring keywords
         _factors: {
             searchInterest: Math.round(factors.searchInterest),
             competition: Math.round(factors.competition),
@@ -438,3 +446,154 @@ function analyzeKeywordMetrics(keyword: string, seed: string, source: string, ra
     };
 }
 
+// ============================================================================
+// KEYWORD STRATEGY GENERATOR
+// ============================================================================
+// When a keyword has low score, provide:
+// 1. Expanded keyword variations
+// 2. Question-based alternatives
+// 3. Detailed attack strategy
+// ============================================================================
+
+interface KeywordStrategy {
+    issue: string;                    // What's wrong with this keyword
+    expandedKeywords: string[];       // Suggested improved versions
+    questionKeywords: string[];       // Question-based alternatives
+    tactics: string[];                // Specific action items
+    contentAngle: string;             // Recommended content approach
+}
+
+function generateKeywordStrategy(keyword: string, factors: ScoringFactors, score: number): KeywordStrategy {
+    const lowerKeyword = keyword.toLowerCase();
+    const wordCount = keyword.split(" ").length;
+    const currentYear = new Date().getFullYear();
+
+    // Identify the main issue
+    let issue = "";
+    const issues: string[] = [];
+
+    if (factors.competition >= 70) {
+        issues.push("경쟁이 너무 치열함");
+    }
+    if (wordCount <= 3) {
+        issues.push("키워드가 너무 짧음 (롱테일 필요)");
+    }
+    if (factors.intentValue < 50) {
+        issues.push("수익 의도가 약함");
+    }
+    if (factors.freshness < 50) {
+        issues.push("시의성 부족");
+    }
+    if (factors.actionability < 50) {
+        issues.push("콘텐츠화 어려움");
+    }
+
+    issue = issues.length > 0 ? issues.join(" / ") : "전반적으로 개선 필요";
+
+    // Generate expanded keyword variations
+    const expandedKeywords: string[] = [];
+
+    // Add year for freshness
+    if (!lowerKeyword.includes(String(currentYear)) && !lowerKeyword.includes(String(currentYear + 1))) {
+        expandedKeywords.push(`${keyword} ${currentYear + 1}`);
+    }
+
+    // Add intent modifiers
+    const intentModifiers = [
+        "how to",
+        "best",
+        "guide",
+        "step by step",
+        "for beginners",
+        "vs",
+        "cost",
+        "checklist"
+    ];
+
+    for (const modifier of intentModifiers.slice(0, 3)) {
+        if (!lowerKeyword.includes(modifier)) {
+            if (modifier === "how to" || modifier === "best") {
+                expandedKeywords.push(`${modifier} ${keyword}`);
+            } else {
+                expandedKeywords.push(`${keyword} ${modifier}`);
+            }
+        }
+    }
+
+    // Add specificity modifiers
+    const specificityModifiers = [
+        "for seniors",
+        "for 65+",
+        "in 2025",
+        "complete guide",
+        "explained simply"
+    ];
+
+    for (const modifier of specificityModifiers.slice(0, 2)) {
+        expandedKeywords.push(`${keyword} ${modifier}`);
+    }
+
+    // Generate question-based alternatives
+    const questionKeywords: string[] = [
+        `what is ${keyword}`,
+        `how does ${keyword} work`,
+        `how to apply for ${keyword}`,
+        `when should I get ${keyword}`,
+        `is ${keyword} worth it`
+    ];
+
+    // Generate tactical recommendations
+    const tactics: string[] = [];
+
+    if (factors.competition >= 70) {
+        tactics.push("🎯 더 구체적인 니치 키워드로 시작하세요");
+        tactics.push("📊 롱테일 키워드(5+ 단어)로 확장하세요");
+    }
+
+    if (wordCount <= 3) {
+        tactics.push("📝 키워드에 연도, 지역, 또는 대상(예: seniors)을 추가하세요");
+        tactics.push("❓ 질문 형태(How to, What is)로 변환하세요");
+    }
+
+    if (factors.intentValue < 50) {
+        tactics.push("💰 'cost', 'best', 'compare' 같은 수익 키워드를 추가하세요");
+        tactics.push("📈 문제 해결형 콘텐츠로 접근하세요 (예: mistakes, issues)");
+    }
+
+    if (factors.freshness < 50) {
+        tactics.push("🗓️ 현재 연도나 'updated', 'latest'를 포함하세요");
+        tactics.push("📰 최근 뉴스나 법률 변경사항을 언급하세요");
+    }
+
+    if (factors.actionability < 50) {
+        tactics.push("✅ 실용적인 체크리스트나 단계별 가이드를 만드세요");
+        tactics.push("🎬 FAQ 섹션을 추가해 Featured Snippet을 노리세요");
+    }
+
+    // Default tactics
+    if (tactics.length === 0) {
+        tactics.push("📌 Related Questions (PAA)를 H2로 활용하세요");
+        tactics.push("🔗 내부 링크로 관련 콘텐츠와 연결하세요");
+        tactics.push("📊 구체적인 수치와 사례를 포함하세요");
+    }
+
+    // Recommend content angle
+    let contentAngle = "";
+    if (factors.competition >= 70) {
+        contentAngle = "개인 경험 기반의 'Ultimate Guide' 형식으로 차별화하세요. 대형 사이트가 다루지 않는 실질적인 팁에 집중하세요.";
+    } else if (factors.intentValue < 50) {
+        contentAngle = "'사례 연구' 또는 '비교 분석' 형식으로 작성하여 수익형 의도를 추가하세요. 실제 비용이나 선택 기준을 상세히 다루세요.";
+    } else if (wordCount <= 3) {
+        contentAngle = "'완전 가이드' 형식으로 10개 이상의 세부 토픽을 포함하세요. 각 토픽이 별도의 롱테일 키워드를 타겟하도록 구성하세요.";
+    } else {
+        contentAngle = "FAQ 형식 + 단계별 가이드를 조합하세요. Google Featured Snippet 노출을 위해 50-60 단어의 간결한 답변을 포함하세요.";
+    }
+
+    return {
+        issue,
+        expandedKeywords: expandedKeywords.slice(0, 5),
+        questionKeywords: questionKeywords.slice(0, 4),
+        tactics: tactics.slice(0, 4),
+        contentAngle
+    };
+}
