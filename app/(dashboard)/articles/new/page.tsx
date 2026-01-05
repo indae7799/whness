@@ -5,7 +5,7 @@ import SeedInputForm from "@/components/seed-input-form"
 import KeywordRecommendations, { KeywordData } from "@/components/keyword-recommendations"
 import ContentGenerationProgress from "@/components/content-generation-progress"
 import { ModeSelection } from "@/components/mode-selection"
-import { AutoModeSettings } from "@/components/auto-mode-settings"
+import { SemiAutoBlogger } from "@/components/semi-auto-blogger"
 import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -64,7 +64,7 @@ export default function NewArticlePage() {
 
                     {mode === "auto" && (
                         <div className="w-full">
-                            <AutoModeSettings />
+                            <SemiAutoBlogger />
                         </div>
                     )}
 
