@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { DEFAULT_SEEDS } from "@/lib/research/defaultSeeds"
-import { fetchGoogleSuggest, fetchGoogleTrendsDaily } from "@/lib/research/fetcher"
+import { fetchGoogleSuggest, fetchGoogleTrendsDaily, fetchPeopleAlsoAsk } from "@/lib/research/fetcher"
 
 export async function POST(req: Request) {
     console.log("[API] Generating Index-Based Keyword Analysis with Trends...");
@@ -142,10 +142,20 @@ export async function POST(req: Request) {
             // Cap at 5, but don't force fill. Can be 1, 2, 3, 4, or 5.
             const finalPicks = highQualityPicks.slice(0, 5);
 
+            // Fetch People Also Ask questions for this term
+            let paaQuestions: string[] = [];
+            try {
+                const paaResults = await fetchPeopleAlsoAsk(term);
+                paaQuestions = paaResults.map(p => p.question).slice(0, 5);
+            } catch (e) {
+                console.warn(`[API] PAA fetch failed for ${term}`);
+            }
+
             return {
                 term: term,
                 category: isTrend ? "Trending 🔥" : (finalPicks[0]?.intent || "General"),
-                suggestions: finalPicks
+                suggestions: finalPicks,
+                peopleAlsoAsk: paaQuestions // NEW: PAA questions for this keyword
             };
         }));
 
@@ -172,96 +182,259 @@ export async function POST(req: Request) {
     }
 }
 
-// --- Rank-Based Scoring System ---
+// ============================================================================
+// ENHANCED SCORING SYSTEM v2.0
+// ============================================================================
+// Factors considered:
+// 1. 검색관심도 (Search Interest) - Estimated from Google rank position
+// 2. 경쟁도 (Competition Level) - Based on keyword length and specificity
+// 3. 문서노출수 (Document Exposure) - Inferred from autocomplete ranking
+// 4. 키워드 구조 (Keyword Structure) - Word count, question format, modifiers
+// 5. 현재 이슈성 (Current Trends) - Trending topics, yearly keywords
+// 6. 수익 의도 (Commercial Intent) - Buyer intent signals
+// 7. 신선도 (Freshness) - Year markers, seasonal relevance
+// 8. 실행가능성 (Actionability) - Can we rank for this?
+// ============================================================================
+
+interface ScoringFactors {
+    searchInterest: number;      // 0-100: Estimated search volume
+    competition: number;         // 0-100: Lower is better (easier)
+    documentExposure: number;    // 0-100: Based on autocomplete position
+    keywordStructure: number;    // 0-100: Long-tail bonus
+    trendingBonus: number;       // 0-100: Current issue/trend
+    intentValue: number;         // 0-100: Commercial value
+    freshness: number;           // 0-100: Timeliness
+    actionability: number;       // 0-100: Can we actually rank?
+}
 
 function analyzeKeywordMetrics(keyword: string, seed: string, source: string, rankPosition: number, isTrending: boolean = false) {
     const wordCount = keyword.split(" ").length;
+    const lowerKeyword = keyword.toLowerCase();
+    const currentYear = new Date().getFullYear();
+    const nextYear = currentYear + 1;
 
-    // Base Values
-    let score = 70;
-    let difficulty = "Medium";
-    let intent = "Informational";
-    let volumeEstimate = 1000; // Base baseline
+    // Initialize scoring factors
+    const factors: ScoringFactors = {
+        searchInterest: 50,
+        competition: 50,
+        documentExposure: 50,
+        keywordStructure: 50,
+        trendingBonus: 0,
+        intentValue: 30,
+        freshness: 40,
+        actionability: 50
+    };
 
-    // --- 1. Difficulty Calculation (Based on Source Rank) ---
-    if (source === "Google") {
-        if (rankPosition <= 2) {
-            difficulty = "Hard";
-            volumeEstimate = 5000 + (Math.random() * 5000);
-            score -= 10;
-        } else if (rankPosition <= 6) {
-            difficulty = "Medium";
-            volumeEstimate = 1500 + (Math.random() * 2000);
-            score += 5;
-        } else {
-            difficulty = "Easy";
-            volumeEstimate = 300 + (Math.random() * 800);
-            score += 15;
-        }
-    }
-
-    // --- 2. Trending Bonus (The "Secret Sauce") ---
-    if (isTrending) {
-        score += 15; // Huge bonus for being based on a current hot topic
-        volumeEstimate *= 1.5; // Likely higher real volume than historical data shows
-        // Determine intent based on "news" feel
-        score = Math.min(score, 99);
-    }
-
-    // --- 3. Word Count Modifier (KGR Principle) ---
-    if (wordCount >= 5) {
-        score += 5;
-        if (difficulty === "Hard") difficulty = "Medium";
-    }
-    if (wordCount >= 7) {
-        score += 10;
-        difficulty = "Easy";
-    }
-
-    // --- 4. Intent & Value Modifiers ---
-    // --- 4. Intent & Value Modifiers (Korean Translation) ---
-    const commercialWords = ["cost", "price", "fees", "premium", "rates", "cheap", "best"];
-    const transactionalWords = ["buy", "enroll", "sign up", "get", "apply", "register"];
-    const guideWords = ["how to", "guide", "steps", "checklist", "what is", "benefits", "deadline"];
-
-    if (commercialWords.some(w => keyword.toLowerCase().includes(w))) {
-        intent = "수익형 (홍보)";
-        score += 5;
-    } else if (transactionalWords.some(w => keyword.toLowerCase().includes(w))) {
-        intent = "수익형 (전환)";
-        score += 5;
-    } else if (guideWords.some(w => keyword.toLowerCase().includes(w))) {
-        intent = "정보형 (유입)";
-        score += 8;
+    // =====================
+    // 1. SEARCH INTEREST (검색관심도)
+    // =====================
+    // Autocomplete rank 1-3 = high volume, 4-6 = medium, 7+ = low
+    // But lower volume = easier to rank (inverse relationship for us)
+    if (rankPosition <= 2) {
+        factors.searchInterest = 90;  // High volume
+        factors.competition = 85;      // But high competition
+    } else if (rankPosition <= 5) {
+        factors.searchInterest = 70;
+        factors.competition = 60;
+    } else if (rankPosition <= 8) {
+        factors.searchInterest = 50;
+        factors.competition = 40;
     } else {
+        factors.searchInterest = 35;
+        factors.competition = 25;      // Low competition = opportunity
+    }
+
+    // =====================
+    // 2. DOCUMENT EXPOSURE (문서노출수)
+    // =====================
+    // Lower autocomplete rank = more documents already competing
+    factors.documentExposure = Math.max(10, 100 - (rankPosition * 8));
+
+    // =====================
+    // 3. KEYWORD STRUCTURE (키워드 구조)
+    // =====================
+    // Long-tail keywords (5+ words) are easier to rank
+    if (wordCount >= 7) {
+        factors.keywordStructure = 95;  // Very long-tail = golden opportunity
+        factors.competition -= 30;
+    } else if (wordCount >= 5) {
+        factors.keywordStructure = 80;
+        factors.competition -= 15;
+    } else if (wordCount >= 4) {
+        factors.keywordStructure = 65;
+        factors.competition -= 5;
+    } else if (wordCount >= 3) {
+        factors.keywordStructure = 50;
+    } else {
+        factors.keywordStructure = 25;  // Short keywords are very competitive
+        factors.competition += 20;
+    }
+
+    // Question format bonus (great for featured snippets)
+    const questionWords = ["how", "what", "why", "when", "where", "who", "which", "can", "do", "is", "are"];
+    if (questionWords.some(q => lowerKeyword.startsWith(q))) {
+        factors.keywordStructure += 15;
+        factors.actionability += 10;  // Questions are easier to answer
+    }
+
+    // =====================
+    // 4. TRENDING BONUS (현재 이슈성)
+    // =====================
+    if (isTrending) {
+        factors.trendingBonus = 40;
+        factors.searchInterest += 20;
+        factors.freshness = 95;
+    }
+
+    // Seasonal/Event keywords
+    const seasonalWords = ["enrollment", "open enrollment", "tax", "deadline", "new year", "2025", "2026"];
+    if (seasonalWords.some(w => lowerKeyword.includes(w))) {
+        factors.trendingBonus += 20;
+        factors.freshness += 20;
+    }
+
+    // =====================
+    // 5. INTENT VALUE (수익 의도)
+    // =====================
+    const highValueWords = ["best", "top", "review", "compare", "vs", "alternative"];
+    const commercialWords = ["cost", "price", "fees", "premium", "rates", "cheap", "affordable", "free"];
+    const transactionalWords = ["buy", "enroll", "sign up", "apply", "register", "get", "find"];
+    const guideWords = ["how to", "guide", "steps", "checklist", "tutorial", "tips", "mistakes"];
+    const problemWords = ["denied", "rejection", "appeal", "problem", "issue", "error", "fix"];
+
+    let intent = "일반 정보";
+
+    if (highValueWords.some(w => lowerKeyword.includes(w))) {
+        factors.intentValue = 90;
+        intent = "수익형 (비교)";
+    } else if (commercialWords.some(w => lowerKeyword.includes(w))) {
+        factors.intentValue = 85;
+        intent = "수익형 (가격)";
+    } else if (transactionalWords.some(w => lowerKeyword.includes(w))) {
+        factors.intentValue = 80;
+        intent = "수익형 (전환)";
+    } else if (problemWords.some(w => lowerKeyword.includes(w))) {
+        factors.intentValue = 75;
+        intent = "문제해결형";
+    } else if (guideWords.some(w => lowerKeyword.includes(w))) {
+        factors.intentValue = 65;
+        intent = "정보형 (가이드)";
+    } else {
+        factors.intentValue = 40;
         intent = "일반 정보";
     }
 
-    // --- 5. Freshness Bonus (Year) ---
-    let freshness = "보통";
-    if (keyword.includes("2025") || keyword.includes("2026") || isTrending) {
-        score += 10;
-        volumeEstimate *= 1.2;
-        freshness = "높음 (이슈)";
+    // =====================
+    // 6. FRESHNESS (신선도)
+    // =====================
+    if (lowerKeyword.includes(String(nextYear))) {
+        factors.freshness = 100;  // Next year = maximum freshness
+    } else if (lowerKeyword.includes(String(currentYear))) {
+        factors.freshness = 85;
+    } else if (lowerKeyword.includes("new") || lowerKeyword.includes("latest") || lowerKeyword.includes("update")) {
+        factors.freshness = 70;
     }
 
-    // Format Volume
+    // =====================
+    // 7. ACTIONABILITY (실행가능성)
+    // =====================
+    // Can we actually create good content for this?
+    const badIntentWords = ["login", "portal", "phone number", "contact", "download pdf", "form"];
+    if (badIntentWords.some(w => lowerKeyword.includes(w))) {
+        factors.actionability = 10;  // Can't help users with these
+    }
+
+    // Good content opportunities
+    if (guideWords.some(w => lowerKeyword.includes(w)) || questionWords.some(q => lowerKeyword.startsWith(q))) {
+        factors.actionability = 85;
+    }
+
+    // =====================
+    // CALCULATE FINAL SCORE
+    // =====================
+    // Weighted formula - prioritize actionability and low competition
+    const weights = {
+        searchInterest: 0.10,      // 10% - We want some volume, but not priority
+        competition: 0.25,         // 25% - IMPORTANT: Lower competition is key
+        keywordStructure: 0.20,    // 20% - Long-tail matters
+        trendingBonus: 0.10,       // 10% - Nice bonus
+        intentValue: 0.15,         // 15% - Commercial value
+        freshness: 0.10,           // 10% - Timeliness
+        actionability: 0.10        // 10% - Can we actually rank
+    };
+
+    // Invert competition for scoring (lower competition = higher score)
+    const competitionScore = 100 - factors.competition;
+
+    const rawScore =
+        (factors.searchInterest * weights.searchInterest) +
+        (competitionScore * weights.competition) +
+        (factors.keywordStructure * weights.keywordStructure) +
+        (factors.trendingBonus * weights.trendingBonus) +
+        (factors.intentValue * weights.intentValue) +
+        (factors.freshness * weights.freshness) +
+        (factors.actionability * weights.actionability);
+
+    // Normalize to 0-99 range
+    const finalScore = Math.min(99, Math.max(20, Math.round(rawScore)));
+
+    // =====================
+    // DETERMINE DIFFICULTY LABEL
+    // =====================
+    let difficulty: string;
+    if (factors.competition >= 70) {
+        difficulty = "경쟁 높음";
+    } else if (factors.competition >= 45) {
+        difficulty = "경쟁 중간";
+    } else {
+        difficulty = "경쟁 낮음 (추천)";
+    }
+
+    // =====================
+    // ESTIMATE VOLUME STRING
+    // =====================
+    let volumeEstimate: number;
+    if (factors.searchInterest >= 80) {
+        volumeEstimate = 5000 + Math.random() * 5000;
+    } else if (factors.searchInterest >= 60) {
+        volumeEstimate = 2000 + Math.random() * 3000;
+    } else if (factors.searchInterest >= 40) {
+        volumeEstimate = 500 + Math.random() * 1500;
+    } else {
+        volumeEstimate = 100 + Math.random() * 400;
+    }
+
     const volStr = volumeEstimate > 1000
         ? `${(volumeEstimate / 1000).toFixed(1)}k/mo`
         : `${Math.floor(volumeEstimate)}/mo`;
 
-    // Translate Difficulty
-    const difficultyKr = difficulty === "Hard" ? "경쟁 높음"
-        : difficulty === "Medium" ? "경쟁 중간"
-            : "경쟁 낮음 (추천)";
+    // =====================
+    // FRESHNESS LABEL
+    // =====================
+    let freshnessLabel = "보통";
+    if (factors.freshness >= 80) {
+        freshnessLabel = "높음 (이슈)";
+    } else if (factors.freshness >= 60) {
+        freshnessLabel = "좋음";
+    }
 
     return {
         keyword: keyword,
-        score: Math.min(score, 99),
-        difficulty: difficultyKr,
+        score: finalScore,
+        difficulty: difficulty,
         intent: intent,
         volume: volStr,
-        // Added details for UI
-        freshness: freshness
+        freshness: freshnessLabel,
+        // Debug info (optional, can be shown in UI)
+        _factors: {
+            searchInterest: Math.round(factors.searchInterest),
+            competition: Math.round(factors.competition),
+            structure: Math.round(factors.keywordStructure),
+            trending: Math.round(factors.trendingBonus),
+            intentValue: Math.round(factors.intentValue),
+            freshness: Math.round(factors.freshness),
+            actionability: Math.round(factors.actionability)
+        }
     };
 }
+

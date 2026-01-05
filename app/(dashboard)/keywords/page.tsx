@@ -27,6 +27,7 @@ interface GeneratedKeyword {
     competition: string
     score: number
     suggestions: LongTailSuggestion[]
+    peopleAlsoAsk?: string[] // NEW: PAA questions extracted from Google
 }
 
 export default function KeywordGeneratorPage() {
@@ -489,6 +490,48 @@ export default function KeywordGeneratorPage() {
                                             </div>
                                         )
                                     })}
+                                </div>
+                            )}
+
+                            {/* PAA Section - People Also Ask */}
+                            {selectedKeywordObj?.peopleAlsoAsk && selectedKeywordObj.peopleAlsoAsk.length > 0 && (
+                                <div className="border-t border-gray-200 dark:border-zinc-700 p-4 bg-gradient-to-b from-yellow-50/50 to-white dark:from-yellow-900/10 dark:to-zinc-900">
+                                    <h3 className="text-sm font-bold text-yellow-700 dark:text-yellow-400 mb-3 flex items-center gap-2">
+                                        💡 People Also Ask ({selectedKeywordObj.peopleAlsoAsk.length})
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {selectedKeywordObj.peopleAlsoAsk.map((question, qi) => (
+                                            <div
+                                                key={qi}
+                                                className="flex items-center justify-between p-2.5 bg-white dark:bg-zinc-800 rounded-lg border border-yellow-100 dark:border-zinc-700 hover:border-yellow-300 transition-colors cursor-pointer group"
+                                                onClick={() => setTargetLongTailKeyword(question)}
+                                            >
+                                                <span className="text-sm text-gray-700 dark:text-gray-300">{question}</span>
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            navigator.clipboard.writeText(question);
+                                                        }}
+                                                        className="p-1 hover:bg-yellow-100 dark:hover:bg-zinc-700 rounded text-gray-400 hover:text-yellow-600"
+                                                        title="복사"
+                                                    >
+                                                        <Copy className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleSaveKeyword(question);
+                                                        }}
+                                                        className="p-1 hover:bg-yellow-100 dark:hover:bg-zinc-700 rounded text-gray-400 hover:text-green-600"
+                                                        title="저장"
+                                                    >
+                                                        <PlusCircle className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                         </div>
