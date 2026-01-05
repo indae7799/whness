@@ -9,22 +9,76 @@ export async function POST(req: Request) {
         const currentDate = new Date();
         const nextYear = currentDate.getFullYear() + 1;
 
-        // --- 1. Seed Selection (Hybrid: Evergreen + Real-Time Trends) ---
+        // =====================================================
+        // SMART SEED ROTATION SYSTEM
+        // =====================================================
+        // Instead of pure random, we use a deterministic rotation
+        // based on day of week + hour to ensure variety across sessions
+        // =====================================================
 
-        // A. Evergreen Seeds (From our safe list) - Pick 3
-        const evergreenSeeds = [...DEFAULT_SEEDS]
-            .map(s => ({ term: s.term, source: 'evergreen' as const }))
-            .sort(() => 0.5 - Math.random())
-            .slice(0, 3);
+        const dayOfWeek = currentDate.getDay(); // 0-6
+        const hourOfDay = currentDate.getHours(); // 0-23
+        const dayOfMonth = currentDate.getDate(); // 1-31
 
-        // B. Real-Time Trends (Google RSS) - Pick 2 relevant ones or top ones
+        // Calculate rotation index (changes every 4 hours)
+        // This gives 6 rotation slots per day, cycling through all 65 seeds over ~10 days
+        const rotationSlot = Math.floor(hourOfDay / 4); // 0-5
+        const rotationIndex = (dayOfMonth * 6 + rotationSlot) % DEFAULT_SEEDS.length;
+
+        // Sort seeds by weight (higher weight = more important)
+        const sortedSeeds = [...DEFAULT_SEEDS].sort((a, b) => (b.weight || 2) - (a.weight || 2));
+
+        // Select 5 seeds using rotation + weight-based selection
+        // - 2 high-weight seeds (weight >= 4)
+        // - 2 medium-weight seeds (weight 3)
+        // - 1 rotating seed from full list
+        const highWeightSeeds = sortedSeeds.filter(s => (s.weight || 2) >= 4);
+        const mediumWeightSeeds = sortedSeeds.filter(s => (s.weight || 2) === 3);
+        const allSeeds = sortedSeeds;
+
+        // Rotate within each category
+        const pickRotated = <T>(arr: T[], count: number, offset: number): T[] => {
+            if (arr.length === 0) return [];
+            const result: T[] = [];
+            for (let i = 0; i < count && i < arr.length; i++) {
+                const idx = (offset + i * 7) % arr.length; // Use prime-like step for better distribution
+                result.push(arr[idx]);
+            }
+            return result;
+        };
+
+        const selectedHighWeight = pickRotated(highWeightSeeds, 2, rotationIndex);
+        const selectedMediumWeight = pickRotated(mediumWeightSeeds, 2, rotationIndex + 3);
+        const selectedRotating = pickRotated(allSeeds, 1, rotationIndex + dayOfWeek);
+
+        // Combine and deduplicate
+        const selectedTerms = new Set<string>();
+        const evergreenSeeds: { term: string; source: 'evergreen' }[] = [];
+
+        for (const seed of [...selectedHighWeight, ...selectedMediumWeight, ...selectedRotating]) {
+            if (!selectedTerms.has(seed.term) && evergreenSeeds.length < 3) {
+                selectedTerms.add(seed.term);
+                evergreenSeeds.push({ term: seed.term, source: 'evergreen' as const });
+            }
+        }
+
+        // Fill remaining slots if needed
+        let fillIndex = rotationIndex;
+        while (evergreenSeeds.length < 3 && fillIndex < allSeeds.length + rotationIndex) {
+            const seed = allSeeds[fillIndex % allSeeds.length];
+            if (!selectedTerms.has(seed.term)) {
+                selectedTerms.add(seed.term);
+                evergreenSeeds.push({ term: seed.term, source: 'evergreen' as const });
+            }
+            fillIndex++;
+        }
+
+        console.log(`[API] Selected evergreen seeds (rotation ${rotationIndex}):`, evergreenSeeds.map(s => s.term));
+
+        // B. Real-Time Trends (Google RSS) - Pick 2 relevant ones
         let trendSeeds: { term: string, source: 'trend' }[] = [];
         try {
-            const rawTrends = await fetchGoogleTrendsDaily("US"); // Geo US
-            // Filter trends that might be relevant to our niche (broadly)
-            // Or just take top 2 to spark "News Jacking" ideas
-            // For now, we take top 2 regardless, to show "What's Hot".
-            // Ideally, we filter by keywords like "health", "money", "tax", "law".
+            const rawTrends = await fetchGoogleTrendsDaily("US");
 
             const insuranceKeywords = ["health", "medicare", "insurance", "tax", "finance", "medical", "drug", "benefit", "cost", "new", "law"];
 
@@ -32,9 +86,7 @@ export async function POST(req: Request) {
                 insuranceKeywords.some(k => t.toLowerCase().includes(k))
             ).slice(0, 2);
 
-            // If no relevant trends found, just take the top 2 absolute hottest topics (News Jacking strategy)
             const backupTrends = rawTrends.slice(0, 2);
-
             const finalTrends = relevantTrends.length > 0 ? relevantTrends : backupTrends;
 
             trendSeeds = finalTrends.map(t => ({ term: t, source: 'trend' as const }));
