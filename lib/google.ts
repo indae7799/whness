@@ -9,7 +9,7 @@ export async function callGoogleGenAI(
     userPrompt: string,
     modelId: string = DEFAULT_MODEL,
     temperature: number = 0.7,
-    maxOutputTokens: number = 8192
+    maxOutputTokens: number = 8175
 ): Promise<string> {
     const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
     if (!apiKey) {

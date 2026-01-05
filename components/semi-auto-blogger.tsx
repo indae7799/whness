@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { Sparkles, Search, PenTool, ArrowRight, Loader2, CheckCircle2, RotateCcw, Layout, FileText, Globe, Zap, Settings2, Copy, ExternalLink, Workflow, Image as ImageIcon } from "lucide-react"
+import { Sparkles, Search, PenTool, ArrowRight, Loader2, CheckCircle2, RotateCcw, Layout, FileText, Globe, Zap, Settings2, Copy, ExternalLink, Workflow, Image as ImageIcon, Bookmark, PlusCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -29,6 +29,9 @@ export function SemiAutoBlogger() {
 
     // Final Content
     const [generatedContent, setGeneratedContent] = useState<any>(null)
+    const [savedKeywords, setSavedKeywords] = useState<string[]>([])
+    const [isGeneratingImagePrompt, setIsGeneratingImagePrompt] = useState(false)
+    const [copied, setCopied] = useState(false)
 
     // Handlers
     const handleFindKeywords = async () => {
@@ -94,7 +97,6 @@ export function SemiAutoBlogger() {
             outlineModelId = "google/gemini-2.5-flash:free"
             contentModelId = "google/gemini-2.5-flash:free"
         }
-        // "hybrid" uses the defaults above (3.0 -> 2.5)
 
         try {
             const res = await fetch("/api/generate/chained", {
@@ -106,7 +108,7 @@ export function SemiAutoBlogger() {
                     outlineModelId,
                     contentModelId,
                     temperature: 0.7,
-                    maxOutputTokens: 8192
+                    maxOutputTokens: 8175
                 })
             })
             const data = await res.json()
@@ -118,6 +120,20 @@ export function SemiAutoBlogger() {
         } finally {
             setLoading(false)
         }
+    }
+
+    const handleSaveKeyword = (kw: string) => {
+        if (!savedKeywords.includes(kw)) {
+            setSavedKeywords(prev => [...prev, kw])
+        }
+    }
+
+    const handleCopyContentPrompt = () => {
+        const keyword = selectedLongTail || selectedKeyword || topic;
+        const prompt = `[SEO Content Strategy]\nFocus Keyword: ${selectedKeyword}\nTarget Topic: ${keyword}\n\nPlease write a premium 2,200+ word blog post following the NYC expert persona guidelines...`;
+        navigator.clipboard.writeText(prompt);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
     }
 
     return (
@@ -187,7 +203,7 @@ export function SemiAutoBlogger() {
                         </div>
                     )}
 
-                    {/* Step 2: Keyword Selection */}
+                    {/* Step 2: Keyword Selection & Strategy */}
                     {step === "keyword" && (
                         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5">
                             <div className="grid md:grid-cols-2 gap-8">
@@ -201,10 +217,15 @@ export function SemiAutoBlogger() {
                                             <div
                                                 key={i}
                                                 onClick={() => handleSelectKeyword(kw)}
-                                                className={`p-4 rounded-xl border transition-all cursor-pointer flex justify-between items-center ${selectedKeyword === kw.phrase ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/10' : 'border-gray-100 dark:border-zinc-800 hover:border-gray-300'}`}
+                                                className={`p-4 rounded-xl border transition-all cursor-pointer flex justify-between items-center group ${selectedKeyword === kw.phrase ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/10 shadow-sm' : 'border-gray-100 dark:border-zinc-800 hover:border-gray-300 bg-white dark:bg-zinc-900'}`}
                                             >
-                                                <span className="font-medium">{kw.phrase}</span>
-                                                <Badge variant="secondary">Score {kw.score}</Badge>
+                                                <span className="font-medium text-gray-800 dark:text-gray-200">{kw.phrase}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <Badge variant="secondary" className="bg-white dark:bg-zinc-800 border-gray-100">Score {kw.score}</Badge>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); handleSaveKeyword(kw.phrase) }}>
+                                                        <PlusCircle className="w-4 h-4 text-blue-500" />
+                                                    </Button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -221,64 +242,138 @@ export function SemiAutoBlogger() {
                                                 <div
                                                     key={i}
                                                     onClick={() => setSelectedLongTail(lt.phrase)}
-                                                    className={`p-4 rounded-xl border transition-all cursor-pointer flex justify-between items-center ${selectedLongTail === lt.phrase ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/10' : 'border-gray-100 dark:border-zinc-800 hover:border-gray-300'}`}
+                                                    className={`p-4 rounded-xl border transition-all cursor-pointer flex justify-between items-center group ${selectedLongTail === lt.phrase ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/10 shadow-sm' : 'border-gray-100 dark:border-zinc-800 hover:border-gray-300 bg-white dark:bg-zinc-900'}`}
                                                 >
-                                                    <span className="font-medium">{lt.phrase}</span>
-                                                    <span className="text-xs text-gray-400">Snippet {lt.score}%</span>
+                                                    <span className="font-medium text-gray-800 dark:text-gray-200">{lt.phrase}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-gray-400">Snippet {lt.score}%</span>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); handleSaveKeyword(lt.phrase) }}>
+                                                            <PlusCircle className="w-4 h-4 text-purple-500" />
+                                                        </Button>
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="h-40 flex items-center justify-center border border-dashed rounded-xl text-gray-400 text-sm">
+                                        <div className="h-40 flex items-center justify-center border border-dashed rounded-[2rem] border-gray-200 dark:border-zinc-800 text-gray-400 text-sm bg-gray-50/50 dark:bg-transparent">
                                             좌측에서 키워드를 먼저 선택하세요
                                         </div>
                                     )}
                                 </div>
                             </div>
 
-                            {/* Logic Settings */}
-                            <div className="bg-gray-50 dark:bg-zinc-800/50 p-6 rounded-3xl space-y-6">
+                            {/* Logic Settings (Model Selection) */}
+                            <div className="bg-gray-50 dark:bg-zinc-800/10 p-8 rounded-[2rem] border border-gray-100 dark:border-zinc-800 space-y-6">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <Settings2 className="w-5 h-5 text-gray-700" />
-                                        <h4 className="font-bold text-gray-900">AI 집필 보드 모드 선택</h4>
+                                        <h4 className="font-bold text-gray-900 dark:text-gray-100">AI 집필 보드 모드 선택</h4>
                                     </div>
-                                    <Badge variant="outline" className="bg-white text-blue-600 border-blue-100">Recommended</Badge>
+                                    <Badge variant="outline" className="bg-white dark:bg-zinc-900 text-blue-600 border-blue-100 dark:border-blue-900/40">Premium Recommended</Badge>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     {[
-                                        { id: '3.0', label: 'Gemini 3.0 Only', desc: '논리 & 품질 우선', color: 'blue' },
-                                        { id: 'hybrid', label: 'Hybrid Mode', desc: '3.0 목차 + 2.5 풍부하게', color: 'purple' },
-                                        { id: '2.5', label: 'Gemini 2.5 Only', desc: '토큰 효율 & 속도 우선', color: 'indigo' },
+                                        { id: '3.0', label: 'Gemini 3.0 Only', desc: '최고 논리 & 창의성', color: 'blue' },
+                                        { id: 'hybrid', label: 'Hybrid Mode', desc: '3.0 목차 + 2.5 벌크', color: 'purple' },
+                                        { id: '2.5', label: 'Gemini 2.5 Only', desc: '속도 & 가성비 최우선', color: 'indigo' },
                                     ].map((m) => (
                                         <button
                                             key={m.id}
                                             onClick={() => setGenerationMode(m.id as any)}
-                                            className={`p-4 rounded-2xl border-2 transition-all text-left space-y-1 ${generationMode === m.id
-                                                ? `border-${m.color}-500 bg-${m.color}-50 dark:bg-${m.color}-900/20`
-                                                : 'border-white dark:border-zinc-900 hover:border-gray-200 bg-white dark:bg-zinc-900 shadow-sm'
+                                            className={`p-5 rounded-2xl border-2 transition-all text-left space-y-1 ${generationMode === m.id
+                                                ? `border-${m.color}-500 bg-white dark:bg-zinc-900 shadow-md`
+                                                : 'border-transparent hover:border-gray-200 bg-white dark:bg-zinc-900 shadow-sm'
                                                 }`}
                                         >
-                                            <div className={`text-sm font-bold ${generationMode === m.id ? `text-${m.color}-700 dark:text-${m.color}-300` : 'text-gray-900'}`}>{m.label}</div>
+                                            <div className="text-sm font-bold text-gray-900 dark:text-gray-100">{m.label}</div>
                                             <div className="text-[11px] text-gray-500 font-medium">{m.desc}</div>
                                         </button>
                                     ))}
                                 </div>
-                                <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 pt-2">
-                                    <div className="flex items-center gap-1"><Zap className="w-3 h-3 text-orange-500" /> Temp 0.7</div>
-                                    <div className="flex items-center gap-1"><FileText className="w-3 h-3 text-blue-500" /> Max Tokens 8192</div>
-                                    <div className="flex items-center gap-1"><Globe className="w-3 h-3 text-green-500" /> NYC Expert Persona</div>
-                                </div>
                             </div>
 
-                            <Button
-                                size="lg"
-                                className="w-full h-16 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-lg font-bold shadow-xl shadow-blue-500/30"
-                                onClick={handleStartWriting}
-                                disabled={!selectedKeyword}
-                            >
-                                AI 글쓰기 시작 (2,200단어 프리미엄 모드)
-                            </Button>
+                            {/* Prompts & Write Button Grid */}
+                            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                                <div className="lg:col-span-3 space-y-6">
+                                    {/* Action Prompt Cards */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <Card className="p-6 bg-gradient-to-br from-purple-50/50 to-white dark:from-zinc-900 border-purple-100 dark:border-zinc-800 flex items-center justify-between group h-28 relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 w-20 h-20 bg-purple-500/5 rounded-full blur-2xl -mr-10 -mt-10" />
+                                            <div className="flex gap-4 items-center relative z-10">
+                                                <div className="w-12 h-12 rounded-2xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                                                    <ImageIcon className="text-purple-600 w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-bold text-gray-900 dark:text-gray-100">AI Image Prompt</div>
+                                                    <div className="text-[11px] text-gray-500">Flux & Midjourney Ready</div>
+                                                </div>
+                                            </div>
+                                            <Button variant="ghost" size="icon" onClick={handleCopyImagePrompt} className="group-hover:bg-purple-600 group-hover:text-white transition-all h-10 w-10">
+                                                <Copy className="w-5 h-5" />
+                                            </Button>
+                                        </Card>
+
+                                        <Card className="p-6 bg-gradient-to-br from-blue-50/50 to-white dark:from-zinc-900 border-blue-100 dark:border-zinc-800 flex items-center justify-between group h-28 relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/5 rounded-full blur-2xl -mr-10 -mt-10" />
+                                            <div className="flex gap-4 items-center relative z-10">
+                                                <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                                                    <FileText className="text-blue-600 w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-bold text-gray-900 dark:text-gray-100">Blog Strategy Prompt</div>
+                                                    <div className="text-[11px] text-gray-500">Gemini 3.0 Logic Built-in</div>
+                                                </div>
+                                            </div>
+                                            <Button variant="ghost" size="icon" onClick={handleCopyContentPrompt} className="group-hover:bg-blue-600 group-hover:text-white transition-all h-10 w-10">
+                                                {copied ? <CheckCircle2 className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                                            </Button>
+                                        </Card>
+                                    </div>
+
+                                    <Button
+                                        size="lg"
+                                        className="w-full h-20 rounded-[2rem] bg-gradient-to-r from-blue-600 to-indigo-600 text-xl font-bold shadow-2xl shadow-blue-500/40 hover:scale-[1.01] transition-transform"
+                                        onClick={handleStartWriting}
+                                        disabled={!selectedKeyword}
+                                    >
+                                        <PenTool className="mr-2 w-6 h-6" />
+                                        프리미엄 1-Click 집필 시작
+                                    </Button>
+                                </div>
+
+                                {/* Sidebar: 저장글감 (Saved Materials) */}
+                                <div className="lg:col-span-1 border-l border-gray-100 dark:border-zinc-800 pl-8 h-full min-h-[460px]">
+                                    <div className="flex items-center gap-2 mb-6">
+                                        <Bookmark className="w-5 h-5 text-orange-500" />
+                                        <h4 className="text-base font-bold text-gray-900 dark:text-gray-100">저장글감</h4>
+                                        <Badge variant="outline" className="ml-auto bg-gray-50 dark:bg-zinc-800 text-[10px]">{savedKeywords.length}</Badge>
+                                    </div>
+                                    <div className="space-y-3 overflow-y-auto max-h-[500px] pr-2 custom-scrollbar">
+                                        {savedKeywords.length === 0 ? (
+                                            <div className="py-24 text-center space-y-4">
+                                                <div className="w-12 h-12 bg-gray-50 dark:bg-zinc-800/50 rounded-full flex items-center justify-center mx-auto text-gray-300">
+                                                    <PlusCircle className="w-6 h-6" />
+                                                </div>
+                                                <p className="text-xs text-gray-500 leading-relaxed">마음에 드는 키워드 옆의<br />(+) 버튼을 눌러 저장하세요.</p>
+                                            </div>
+                                        ) : (
+                                            savedKeywords.map((sk, i) => (
+                                                <div
+                                                    key={i}
+                                                    className="group flex items-center justify-between p-4 rounded-2xl bg-gray-50 dark:bg-zinc-800/50 hover:bg-white dark:hover:bg-zinc-800 border-2 border-transparent hover:border-orange-200 dark:hover:border-orange-900/30 transition-all cursor-pointer shadow-sm"
+                                                    onClick={() => setSelectedLongTail(sk)}
+                                                >
+                                                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300 truncate mr-2">{sk}</span>
+                                                    <X
+                                                        className="w-4 h-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        onClick={(e) => { e.stopPropagation(); setSavedKeywords(prev => prev.filter(k => k !== sk)) }}
+                                                    />
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )}
 
@@ -376,7 +471,7 @@ export function SemiAutoBlogger() {
                     )}
                 </div>
             </div>
-        </div>
+        </div >
     )
 }
 
