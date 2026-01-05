@@ -7,7 +7,9 @@ const DEFAULT_MODEL = "gemini-2.0-flash-exp"
 export async function callGoogleGenAI(
     systemPrompt: string,
     userPrompt: string,
-    modelId: string = DEFAULT_MODEL
+    modelId: string = DEFAULT_MODEL,
+    temperature: number = 0.7,
+    maxOutputTokens: number = 8192
 ): Promise<string> {
     const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
     if (!apiKey) {
@@ -15,7 +17,7 @@ export async function callGoogleGenAI(
     }
 
     try {
-        console.log(`[Google GenAI] Calling model: ${modelId}`)
+        console.log(`[Google GenAI] Calling model: ${modelId} (Temp: ${temperature}, MaxTokens: ${maxOutputTokens})`)
 
         // Initialize per call to ensure env vars are loaded
         const genAI = new GoogleGenerativeAI(apiKey)
@@ -23,7 +25,11 @@ export async function callGoogleGenAI(
         // Gemini uses 'systemInstruction' for system prompt
         const model = genAI.getGenerativeModel({
             model: modelId,
-            systemInstruction: systemPrompt
+            systemInstruction: systemPrompt,
+            generationConfig: {
+                temperature: temperature,
+                maxOutputTokens: maxOutputTokens,
+            }
         })
 
         const result = await model.generateContent(userPrompt)

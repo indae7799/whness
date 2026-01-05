@@ -23,6 +23,26 @@ export interface ImageModel {
 
 export const TEXT_MODELS: TextModel[] = [
     {
+        id: 'google/gemini-2.5-flash:free',
+        name: 'Gemini 2.5 Flash (Free)',
+        provider: 'openrouter',
+        inputCost: 0,
+        outputCost: 0,
+        contextWindow: 1000000,
+        tier: 'free',
+        description: 'Free - Fast & High Efficiency (2026)'
+    },
+    {
+        id: 'google/gemini-3.0-flash:free',
+        name: 'Gemini 3.0 Flash (Free)',
+        provider: 'openrouter',
+        inputCost: 0,
+        outputCost: 0,
+        contextWindow: 1000000,
+        tier: 'free',
+        description: 'Free - Logical & Robust (2026)'
+    },
+    {
         id: 'google/gemini-2.0-flash-exp:free',
         name: 'Gemini 2.0 Flash Exp (Free)',
         provider: 'openrouter',
