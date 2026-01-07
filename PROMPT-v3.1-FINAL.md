@@ -127,7 +127,13 @@ Experience Statements: "When I helped my 68-year-old neighbor last March..."
 - **플레이스홀더**: `[INSERT_IMAGE_HERE]` - 전체 글에서 1번만 사용
 - ⚠️ **CRITICAL**: 이미지 플레이스홀더를 여러 번 사용하면 FAIL
 
-### 스타일 (Documentary Photography)
+### ⛔ 절대 금지 (이미지 관련)
+- ❌ 실제 이미지 URL 삽입 금지 (예: `<img src="https://...">`)
+- ❌ Unsplash, Pixabay 등 외부 이미지 URL 사용 금지
+- ❌ `<img>` 태그에 실제 URL 넣기 금지
+- ✅ **반드시 `[INSERT_IMAGE_HERE]` 텍스트만 출력**
+
+### 스타일 (참고용 - 이미지는 별도 생성)
 ```
 Documentary Photography / Street Photography / Unsplash Style
 Camera: Fujifilm X100V

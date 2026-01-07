@@ -104,7 +104,13 @@ SEO Requirements:
 - Placeholder: [INSERT_IMAGE_HERE]
 - **CRITICAL**: Use this placeholder ONLY ONCE in the entire article
 
-**Quality Standard**:
+**⛔ FORBIDDEN - DO NOT DO THIS:**
+- ❌ Do NOT insert actual image URLs (e.g., \`<img src="https://...">\`)
+- ❌ Do NOT use Unsplash, Pixabay, or any external image URLs
+- ❌ Do NOT generate \`<img>\` tags with real URLs
+- ✅ ONLY output the exact text: [INSERT_IMAGE_HERE]
+
+**Quality Standard** (for reference only - image is generated separately):
 - Style: Documentary Photography / Street Photography / Unsplash Style
 - Camera: Fujifilm X100V, raw style, authentic texture
 - Lighting: Natural only
@@ -112,6 +118,7 @@ SEO Requirements:
 - FORBIDDEN: text, face, posed models, cinematic lighting
 
 **Alt Text**: 3-6 words including focus keyword
+
 
 ---
 
