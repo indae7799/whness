@@ -57,6 +57,27 @@ export async function POST(req: Request) {
         const mediaData = await res.json();
         console.log(`[API] ${imageType} image uploaded:`, mediaData.source_url);
 
+        // SEO: Update Alt Text immediately if provided
+        const altText = formData.get("alt_text") as string;
+        if (altText && mediaData.id) {
+            try {
+                await fetch(`${wpUrl}/wp-json/wp/v2/media/${mediaData.id}`, {
+                    method: "POST",
+                    headers: {
+                        "Authorization": authHeader,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        alt_text: altText,
+                        title: altText // Set title too for consistency
+                    })
+                });
+                console.log(`[API] SEO Alt Text updated: "${altText}"`);
+            } catch (ignore) {
+                console.warn("[API] Failed to update Alt Text, proceeding anyway");
+            }
+        }
+
         return NextResponse.json({
             success: true,
             id: mediaData.id,

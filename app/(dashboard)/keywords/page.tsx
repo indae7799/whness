@@ -85,11 +85,13 @@ export default function KeywordGeneratorPage() {
             if (!res.ok) throw new Error("Failed to generate")
 
             const data = await res.json()
-            setKeywords(data.keywords)
+            // FIX: Backend returns 'results', handled fallback
+            const resultList = data.results || data.keywords || [];
+            setKeywords(resultList)
 
             // Initial Select
-            if (data.keywords && data.keywords.length > 0) {
-                const first = data.keywords[0];
+            if (resultList.length > 0) {
+                const first = resultList[0];
                 setSelectedKeywordObj(first)
                 // Auto-set focus for convenience
                 setTargetFocusKeyword(first.term)
@@ -213,7 +215,7 @@ ${strategySection}
             // 2. Fallback: If not found in editor, use a generic template (Free & Zero-Token)
             if (!promptText) {
                 const keyword = targetLongTailKeyword || targetFocusKeyword || "New York Lifestyle";
-                promptText = `Editorial photography of ${keyword}, New York City atmosphere, cinematic lighting, shallow depth of field, shot on Sony A7R IV, 8k resolution, highly detailed, realistic texture, 16:9 aspect ratio --ar 16:9 --v 6.0`;
+                promptText = `Documentary photography of ${keyword}, natural window lighting, shot on Fujifilm X100V, raw style, authentic texture, 16:9 aspect ratio --ar 16:9 --v 6.0 --no text --no face --no posed models`;
             }
 
             // 3. Copy to clipboard

@@ -1,7 +1,6 @@
 "use client"
-
 import { useState, useEffect } from "react"
-import { Send, Image as ImageIcon, CheckCircle2, AlertCircle, UploadCloud, Save as SaveIcon } from "lucide-react"
+import { Send, Image as ImageIcon, CheckCircle2, AlertCircle, UploadCloud, Save as SaveIcon, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -24,6 +23,7 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
     const [isPublishing, setIsPublishing] = useState(false)
     const [result, setResult] = useState<{ success: boolean; link?: string; error?: string } | null>(null)
     const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+    const [copied, setCopied] = useState(false) // NEW State for copy feedback
 
     // NEW: Track existing Supabase URLs (to avoid re-uploading)
     const [existingBodyImageUrl, setExistingBodyImageUrl] = useState<string | null>(null)
@@ -60,6 +60,17 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
             reader.readAsDataURL(defaultBodyImage)
         }
     }, [defaultBodyImage])
+
+    const handleCopyHtml = async () => {
+        if (!htmlContent) return;
+        try {
+            await navigator.clipboard.writeText(htmlContent);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+            console.error('Failed to copy', err);
+        }
+    };
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
@@ -178,13 +189,15 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
     }
 
     const handlePublish = async () => {
+        console.log("[Client] Publish button clicked");
+
         // Validate
         if (!htmlContent) {
-            alert("본문(HTML)을 입력해주세요.");
+            alert("⚠️ 본문(HTML)이 비어있습니다. 먼저 글을 생성해주세요.");
             return;
         }
 
-        if (!confirm("정말로 워드프레스에 발행하시겠습니까?")) return;
+        if (!confirm("정말로 워드프레스에 발행하시겠습니까? (이미지와 본문이 업로드됩니다)")) return;
 
         setIsPublishing(true)
         setResult(null)
@@ -195,6 +208,13 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
                 const formData = new FormData();
                 formData.append("image", file, `${type}-image.png`);
                 formData.append("type", type);
+
+                // SEO: Add Alt Text
+                const altText = type === 'featured'
+                    ? (focusKeyword || "Blog Featured Image")
+                    : `${focusKeyword || "Blog Info"} - Detailed View`;
+
+                formData.append("alt_text", altText);
 
                 const res = await fetch("/api/wordpress/upload-image", {
                     method: "POST",
@@ -212,14 +232,20 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
             // 1. Get Featured Image (Async from Top Component)
             let featuredBlob: Blob | null = null;
             if (getFeaturedImage) {
-                featuredBlob = await getFeaturedImage();
+                try {
+                    console.log("[Client] Retrieving featured image...");
+                    featuredBlob = await getFeaturedImage();
+                } catch (err) {
+                    console.error("[Client] Failed to get featured image:", err);
+                    // Continue without it? Or fail? Let's warn.
+                }
             }
 
             // 2. Get Body Image (Manual or Default)
             const finalBodyImage = bodyImageFile || defaultBodyImage;
 
             if (!featuredBlob && !finalBodyImage) {
-                alert("이미지가 없습니다. 상단에서 썸네일을 생성하거나 하단에서 이미지를 업로드해주세요.");
+                alert("🚫 이미지가 없습니다!\n\n상단의 '썸네일 생성'을 완료했는지, 또는 하단에 본문 이미지가 있는지 확인해주세요.\n이미지 없이 발행할 수 없습니다.");
                 setIsPublishing(false);
                 return;
             }
@@ -244,8 +270,24 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
                 console.log("[Client] Body image uploaded:", bodyMediaUrl);
             }
 
-            // 4. Clean Content - Remove internal image prompt comments
-            const cleanHtml = htmlContent.replace(/<!--\s*\[IMAGE_PROMPT_START\][\s\S]*?\[IMAGE_PROMPT_END\]\s*-->/g, "").trim();
+            // 4. Clean Content & Insert Body Image
+            let cleanHtml = htmlContent.replace(/<!--\s*\[IMAGE_PROMPT_START\][\s\S]*?\[IMAGE_PROMPT_END\]\s*-->/g, "").trim();
+
+            if (bodyMediaUrl) {
+                const imgTag = `<figure class="wp-block-image"><img src="${bodyMediaUrl}" alt="${focusKeyword} - Detail" class="whness-body-image" /></figure>`;
+                if (cleanHtml.includes("[INSERT_IMAGE_HERE]")) {
+                    cleanHtml = cleanHtml.replace("[INSERT_IMAGE_HERE]", imgTag);
+                } else {
+                    // If no placeholder, insert after the first H2 (Intelligent Placement)
+                    const firstH2Index = cleanHtml.indexOf("</h2>");
+                    if (firstH2Index !== -1) {
+                        cleanHtml = cleanHtml.slice(0, firstH2Index + 5) + imgTag + cleanHtml.slice(firstH2Index + 5);
+                    } else {
+                        // Fallback: Append to top
+                        cleanHtml = imgTag + cleanHtml;
+                    }
+                }
+            }
 
             // 5. Publish post with JSON (small payload - no images)
             const res = await fetch("/api/wordpress/post", {
@@ -294,133 +336,113 @@ export function WordPressPublisher({ defaultBodyImage, getFeaturedImage, initial
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 gap-6">
 
-                {/* Left: HTML Input */}
-                <div className="lg:col-span-2 space-y-4">
-                    <div className="space-y-2">
+                {/* Left: HTML Input (Full Width) */}
+                <div className="space-y-4">
+                    <div className="flex justify-between items-center">
                         <Label htmlFor="wp-content" className="font-semibold text-gray-700 dark:text-gray-300">
                             1. HTML 본문 붙여넣기 (Ctrl+V)
                         </Label>
-                        <Textarea
-                            id="wp-content"
-                            placeholder="<!-- META TITLE... --> <html>... 여기에 붙여넣으세요"
-                            className="h-64 font-mono text-xs bg-gray-50 dark:bg-zinc-950 resize-none focus:ring-blue-500"
-                            value={htmlContent}
-                            onChange={(e) => {
-                                setHtmlContent(e.target.value);
-                                onHtmlChange?.(e.target.value);
-                            }}
-                        />
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleCopyHtml}
+                            className="text-xs h-7 px-2 text-gray-500 hover:text-blue-600"
+                            disabled={!htmlContent}
+                        >
+                            {copied ? (
+                                <span className="flex items-center gap-1 text-green-600 font-bold">
+                                    <CheckCircle2 className="w-3 h-3" /> 복사됨!
+                                </span>
+                            ) : (
+                                <span className="flex items-center gap-1">
+                                    <Copy className="w-3 h-3" /> 전체 복사
+                                </span>
+                            )}
+                        </Button>
                     </div>
+                    <Textarea
+                        id="wp-content"
+                        placeholder="<!-- META TITLE... --> <html>... 여기에 붙여넣으세요"
+                        className="h-64 font-mono text-xs bg-gray-50 dark:bg-zinc-950 resize-none focus:ring-blue-500"
+                        value={htmlContent}
+                        onChange={(e) => {
+                            setHtmlContent(e.target.value);
+                            onHtmlChange?.(e.target.value);
+                        }}
+                    />
                 </div>
 
-                {/* Right: Image Upload & Action */}
-                <div className="space-y-6">
-                    <div className="space-y-2">
-                        <Label className="font-semibold text-gray-700 dark:text-gray-300">
-                            2. 본문 이미지 (선택사항)
-                        </Label>
-                        <p className="text-xs text-gray-500 mb-2">
-                            *기본값: 상단 썸네일 생성기의 원본 이미지<br />
-                            *다른 이미지를 원하면 아래에 업로드하세요.
-                        </p>
+                {/* Right: Action Buttons (2 Columns) */}
+                <div className="grid grid-cols-2 gap-4">
+                    {/* Publish Button */}
+                    <Button
+                        onClick={handlePublish}
+                        disabled={isPublishing}
+                        className={`w-full h-12 text-base font-semibold shadow-lg transition-all ${isPublishing ? 'bg-gray-400' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:scale-[1.02] hover:shadow-blue-500/25'
+                            }`}
+                    >
+                        {isPublishing ? (
+                            <span className="flex items-center gap-2">
+                                <UploadCloud className="animate-bounce w-5 h-5" />
+                                발행 중...
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-2">
+                                <Send className="w-5 h-5" />
+                                워드프레스 발행하기
+                            </span>
+                        )}
+                    </Button>
 
-                        <div className={`
-                            relative border-2 border-dashed rounded-xl h-40 flex flex-col items-center justify-center text-center p-4 transition-all
-                            ${previewUrl ? 'border-blue-300 bg-blue-50 dark:bg-blue-900/10' : 'border-gray-300 hover:border-blue-400 bg-gray-50 dark:border-zinc-700 dark:bg-zinc-800'}
-                        `}>
-                            {previewUrl ? (
-                                <>
-                                    <img src={previewUrl} alt="Preview" className="h-full w-full object-contain rounded-lg opacity-80" />
-                                    <div className="absolute inset-0 flex items-center justify-center group">
-                                        <div className="bg-black/50 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">Change Image</div>
-                                    </div>
-                                </>
-                            ) : (
-                                <div className="pointer-events-none">
-                                    <UploadCloud className="w-10 h-10 text-gray-400 mx-auto mb-2" />
-                                    <span className="text-sm text-gray-500 block">원본 이미지 드래그<br />또는 클릭</span>
+                    {/* Save Draft Button */}
+                    <Button
+                        variant="outline"
+                        onClick={handleSaveDraft}
+                        disabled={isPublishing}
+                        className="w-full h-12 border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
+                    >
+                        <SaveIcon className="w-4 h-4 mr-2" />
+                        예약 저장 (DB Save)
+                    </Button>
+                </div>
+
+                <div className="text-center">
+                    <p className="text-[10px] text-gray-400">
+                        *대표 이미지는 상단 썸네일로, 본문 이미지는 별도 선택된 이미지로 자동 설정됩니다.
+                    </p>
+                </div>
+
+                {/* Result Feedback */}
+                {result && (
+                    <div className={`p-4 rounded-lg flex items-start gap-3 text-sm ${result.success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+                        }`}>
+                        {result.success ? (
+                            <>
+                                <CheckCircle2 className="w-5 h-5 shrink-0" />
+                                <div>
+                                    <p className="font-bold">성공!</p>
+                                    {result.link === "#drafts" ? (
+                                        <p>저장 목록에서 확인하세요.</p>
+                                    ) : (
+                                        <a href={result.link} target="_blank" rel="noreferrer" className="underline hover:no-underline mt-1 inline-block">
+                                            게시글 보러가기 →
+                                        </a>
+                                    )}
                                 </div>
-                            )}
-
-                            <input
-                                type="file"
-                                accept="image/*"
-                                onChange={handleImageChange}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            />
-                        </div>
+                            </>
+                        ) : (
+                            <>
+                                <AlertCircle className="w-5 h-5 shrink-0" />
+                                <div>
+                                    <p className="font-bold">오류 발생</p>
+                                    <p>{result.error}</p>
+                                </div>
+                            </>
+                        )}
                     </div>
-
-                    <div className="pt-2 flex flex-col gap-3">
-                        <Button
-                            onClick={handlePublish}
-                            disabled={isPublishing}
-                            className={`w-full h-12 text-base font-semibold shadow-lg transition-all ${isPublishing ? 'bg-gray-400' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:scale-[1.02] hover:shadow-blue-500/25'
-                                }`}
-                        >
-                            {isPublishing ? (
-                                <span className="flex items-center gap-2">
-                                    <UploadCloud className="animate-bounce w-5 h-5" />
-                                    발행 중...
-                                </span>
-                            ) : (
-                                <span className="flex items-center gap-2">
-                                    <Send className="w-5 h-5" />
-                                    3. 워드프레스 발행하기
-                                </span>
-                            )}
-                        </Button>
-
-                        {/* Save Draft Button */}
-                        <Button
-                            variant="outline"
-                            onClick={handleSaveDraft}
-                            disabled={isPublishing}
-                            className="w-full h-10 border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
-                        >
-                            <SaveIcon className="w-4 h-4 mr-2" />
-                            예약 저장 (DB Save)
-                        </Button>
-
-                        <p className="text-[10px] text-center text-gray-400 mt-2">
-                            *대표 이미지는 상단 썸네일로 자동 설정됩니다.
-                        </p>
-                    </div>
-
-                    {/* Result Feedback */}
-                    {result && (
-                        <div className={`p-4 rounded-lg flex items-start gap-3 text-sm ${result.success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
-                            }`}>
-                            {result.success ? (
-                                <>
-                                    <CheckCircle2 className="w-5 h-5 shrink-0" />
-                                    <div>
-                                        <p className="font-bold">성공!</p>
-                                        {result.link === "#drafts" ? (
-                                            <p>저장 목록에서 확인하세요.</p>
-                                        ) : (
-                                            <a href={result.link} target="_blank" rel="noreferrer" className="underline hover:no-underline mt-1 inline-block">
-                                                게시글 보러가기 →
-                                            </a>
-                                        )}
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <AlertCircle className="w-5 h-5 shrink-0" />
-                                    <div>
-                                        <p className="font-bold">오류 발생</p>
-                                        <p>{result.error}</p>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    )}
-
-                </div>
-
+                )}
             </div>
         </Card>
     )

@@ -1,172 +1,184 @@
 import { NextResponse } from "next/server"
 import { DEFAULT_SEEDS } from "@/lib/research/defaultSeeds"
-import { fetchGoogleSuggest, fetchGoogleTrendsDaily, fetchPeopleAlsoAsk } from "@/lib/research/fetcher"
+import { fetchGoogleSuggest, fetchGoogleTrendsDaily, fetchPeopleAlsoAsk, fetchRelatedQuestions, fetchReddit, fetchWikipedia, fetchStackExchange } from "@/lib/research/fetcher"
+import { analyzeSERP } from "@/lib/serp/analyzer"
+import { generateAIStrategy } from "@/services/ai-strategy"
 
 export async function POST(req: Request) {
     console.log("[API] Generating Index-Based Keyword Analysis with Trends...");
+
+    let manualSeeds: any[] = [];
+    try {
+        const body = await req.json();
+        if (body.manualSeeds && Array.isArray(body.manualSeeds)) {
+            manualSeeds = body.manualSeeds;
+        }
+    } catch (e) {
+        // Body parsing failed, ignore
+    }
 
     try {
         const currentDate = new Date();
         const nextYear = currentDate.getFullYear() + 1;
 
-        // =====================================================
-        // SMART SEED ROTATION SYSTEM
-        // =====================================================
-        // Instead of pure random, we use a deterministic rotation
-        // based on day of week + hour to ensure variety across sessions
-        // =====================================================
+        // 1. Fetch Google Trends (US) - Hot Topics (Phase 1.C)
+        const trendSeedsRaw = await fetchGoogleTrendsDaily("US");
+        const trendSeeds = trendSeedsRaw
+            .filter(t => /health|medicare|insurance|tax|finance|medical|benefit|coverage/i.test(t))
+            .slice(0, 2)
+            .map(t => ({ term: t, weight: 5, source: 'trend' as const }));
 
-        const dayOfWeek = currentDate.getDay(); // 0-6
-        const hourOfDay = currentDate.getHours(); // 0-23
-        const dayOfMonth = currentDate.getDate(); // 1-31
+        let evergreenSeeds: { term: string; source: 'evergreen' | 'manual' }[] = [];
 
-        // Calculate rotation index (changes every 4 hours)
-        // This gives 6 rotation slots per day, cycling through all 65 seeds over ~10 days
-        const rotationSlot = Math.floor(hourOfDay / 4); // 0-5
-        const rotationIndex = (dayOfMonth * 6 + rotationSlot) % DEFAULT_SEEDS.length;
+        if (manualSeeds.length > 0) {
+            // [MANUAL MODE]
+            console.log(`[API] Manual Mode: Using ${manualSeeds.length} selected seeds`);
+            evergreenSeeds = manualSeeds.slice(0, 3).map((s: any) => ({
+                term: s.term,
+                source: 'manual' as const
+            }));
+        } else {
+            // [AUTO MODE]
+            console.log("[API] Auto Mode: True Random Selection");
+            const sortedSeeds = [...DEFAULT_SEEDS];
+            const shuffle = (array: any[]) => {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+                return array;
+            };
 
-        // Sort seeds by weight (higher weight = more important)
-        const sortedSeeds = [...DEFAULT_SEEDS].sort((a, b) => (b.weight || 2) - (a.weight || 2));
+            const highWeightSeeds = shuffle(sortedSeeds.filter(s => (s.weight || 2) >= 4));
+            const mediumWeightSeeds = shuffle(sortedSeeds.filter(s => (s.weight || 2) < 4));
 
-        // Select 5 seeds using rotation + weight-based selection
-        // - 2 high-weight seeds (weight >= 4)
-        // - 2 medium-weight seeds (weight 3)
-        // - 1 rotating seed from full list
-        const highWeightSeeds = sortedSeeds.filter(s => (s.weight || 2) >= 4);
-        const mediumWeightSeeds = sortedSeeds.filter(s => (s.weight || 2) === 3);
-        const allSeeds = sortedSeeds;
+            const selectedHigh = highWeightSeeds.slice(0, 3);
+            const selectedMedium = mediumWeightSeeds.slice(0, 3);
+            const candidatePool = shuffle([...selectedHigh, ...selectedMedium]);
 
-        // Rotate within each category
-        const pickRotated = <T>(arr: T[], count: number, offset: number): T[] => {
-            if (arr.length === 0) return [];
-            const result: T[] = [];
-            for (let i = 0; i < count && i < arr.length; i++) {
-                const idx = (offset + i * 7) % arr.length; // Use prime-like step for better distribution
-                result.push(arr[idx]);
+            const selectedTerms = new Set<string>();
+            for (const seed of candidatePool) {
+                if (!selectedTerms.has(seed.term) && evergreenSeeds.length < 3) {
+                    selectedTerms.add(seed.term);
+                    evergreenSeeds.push({ term: seed.term, source: 'evergreen' as const });
+                }
             }
-            return result;
-        };
-
-        const selectedHighWeight = pickRotated(highWeightSeeds, 2, rotationIndex);
-        const selectedMediumWeight = pickRotated(mediumWeightSeeds, 2, rotationIndex + 3);
-        const selectedRotating = pickRotated(allSeeds, 1, rotationIndex + dayOfWeek);
-
-        // Combine and deduplicate
-        const selectedTerms = new Set<string>();
-        const evergreenSeeds: { term: string; source: 'evergreen' }[] = [];
-
-        for (const seed of [...selectedHighWeight, ...selectedMediumWeight, ...selectedRotating]) {
-            if (!selectedTerms.has(seed.term) && evergreenSeeds.length < 3) {
-                selectedTerms.add(seed.term);
-                evergreenSeeds.push({ term: seed.term, source: 'evergreen' as const });
+            if (evergreenSeeds.length < 3) {
+                const allShuffled = shuffle(sortedSeeds);
+                for (const seed of allShuffled) {
+                    if (!selectedTerms.has(seed.term) && evergreenSeeds.length < 3) {
+                        selectedTerms.add(seed.term);
+                        evergreenSeeds.push({ term: seed.term, source: 'evergreen' as const });
+                    }
+                }
             }
+            console.log(`[API] Selected auto seeds (Randomized):`, evergreenSeeds.map(s => s.term));
         }
 
-        // Fill remaining slots if needed
-        let fillIndex = rotationIndex;
-        while (evergreenSeeds.length < 3 && fillIndex < allSeeds.length + rotationIndex) {
-            const seed = allSeeds[fillIndex % allSeeds.length];
-            if (!selectedTerms.has(seed.term)) {
-                selectedTerms.add(seed.term);
-                evergreenSeeds.push({ term: seed.term, source: 'evergreen' as const });
-            }
-            fillIndex++;
-        }
-
-        console.log(`[API] Selected evergreen seeds (rotation ${rotationIndex}):`, evergreenSeeds.map(s => s.term));
-
-        // B. Real-Time Trends (Google RSS) - Pick 2 relevant ones
-        let trendSeeds: { term: string, source: 'trend' }[] = [];
-        try {
-            const rawTrends = await fetchGoogleTrendsDaily("US");
-
-            const insuranceKeywords = ["health", "medicare", "insurance", "tax", "finance", "medical", "drug", "benefit", "cost", "new", "law"];
-
-            const relevantTrends = rawTrends.filter(t =>
-                insuranceKeywords.some(k => t.toLowerCase().includes(k))
-            ).slice(0, 2);
-
-            const backupTrends = rawTrends.slice(0, 2);
-            const finalTrends = relevantTrends.length > 0 ? relevantTrends : backupTrends;
-
-            trendSeeds = finalTrends.map(t => ({ term: t, source: 'trend' as const }));
-
-        } catch (e) {
-            console.warn("Failed to fetch trends, falling back to evergreen only");
-        }
-
-        // Combine: 3 Evergreen + 2 Trends = 5 Seeds to Analyze
+        // Combine Seeds and Process
         let combinedSeeds = [...evergreenSeeds, ...trendSeeds];
 
         const keywords = await Promise.all(combinedSeeds.map(async (seedObj) => {
             const term = seedObj.term;
-            let finalSuggestions: any[] = [];
-            const isTrend = seedObj.source === 'trend'; // Correctly detect trend seeds
+            const isTrend = seedObj.source === 'trend';
+            const candidates: string[] = [];
 
+            // 2. DISCOVER CANDIDATES (PHASE 2: Multi-Source Cross Analysis)
             try {
-                // LEVEL 1: Direct Suggest
-                const level1Suggestions = await fetchGoogleSuggest(term);
+                // Parallel Fetching
+                const [googleSuggestions, redditTitles, wikiTitles, stackResults] = await Promise.all([
+                    fetchGoogleSuggest(term),
+                    fetchReddit(term),
+                    fetchWikipedia(term),
+                    fetchStackExchange(term)
+                ]);
 
-                // If Level 1 provided good candidates, use them.
-                // BUT, to get deeper insights, let's pick one "Juicy" candidate and dive deeper (Level 2).
+                // Source 1: Google
+                if (googleSuggestions) candidates.push(...googleSuggestions);
 
-                let candidates = level1Suggestions;
-
-                // LEVEL 2: Deep Dive (Recursive Fetch)
-                // If we found some suggestions, pick a random long one and fetch IT'S suggestions
-                if (level1Suggestions.length > 3) {
-                    // Pick a random suggestion from the middle (usually best mix of volume/specific)
-                    const deepSeed = level1Suggestions[Math.floor(level1Suggestions.length / 2)];
-                    const level2Suggestions = await fetchGoogleSuggest(deepSeed);
-
-                    // Merge unique suggestions
-                    candidates = [...new Set([...level1Suggestions, ...level2Suggestions])];
-                }
-
-                if (candidates && candidates.length > 0) {
-                    candidates.forEach((realTerm, index) => {
-                        // Strict Filtering
-                        const seedWords = term.split(" ").length;
-                        const realWords = realTerm.split(" ").length;
-
-                        // Trend seeds can be loose (1 word diff ok), Evergreen needs strict (2 words)
-                        const diffThreshold = isTrend ? 1 : 2;
-
-                        if (realWords - seedWords < diffThreshold) return;
-                        if (realTerm === term || realTerm === term + "s") return;
-                        if (realTerm.length > 60) return; // Too long
-
-                        // Negative Filter: Un-actionable or Misleading intents
-                        // We strictly filter out things the user cannot provide (files, tech support, government actions)
-                        const bannedTerms = [
-                            "pdf", "download", "ebook", "free printable", // File expectations
-                            "login", "sign in", "log in", "portal", "account", // Tech support expectations (USER CANNOT FIX LOGIN ISSUES)
-                            "phone number", "customer service", "contact number", "call", // Directory expectations
-                            "near me", "locations", "office address" // Local map expectations
-                        ];
-
-                        if (bannedTerms.some(ban => realTerm.includes(ban))) return;
-
-                        const metrics = analyzeKeywordMetrics(realTerm, term, "Google", index, isTrend);
-                        // Bonus for Level 2 results (longer usually)
-                        if (realTerm.length > term.length + 10) metrics.score += 5;
-
-                        finalSuggestions.push(metrics);
+                // Source 2: Reddit
+                if (redditTitles) {
+                    redditTitles.forEach(title => {
+                        const cleaned = title.replace(/[^\w\s]/gi, '').trim();
+                        if (cleaned.split(' ').length <= 8) candidates.push(cleaned);
                     });
                 }
 
-            } catch (err) {
-                console.warn(`[API] Fetch failed for ${term}`);
+                // Source 3: Wikipedia
+                if (wikiTitles) candidates.push(...wikiTitles);
+
+                // Source 4: StackExchange
+                if (stackResults) {
+                    stackResults.forEach((item: any) => {
+                        const cleaned = item.title.replace(/[^\w\s]/gi, '').trim();
+                        if (cleaned.split(' ').length <= 8) candidates.push(cleaned);
+                    });
+                }
+
+            } catch (e) {
+                console.error(`[Phase 2] Multi-source fetch failed for seed ${term}:`, e);
+                // Fallback
+                try {
+                    const fallback = await fetchGoogleSuggest(term);
+                    if (fallback) candidates.push(...fallback);
+                } catch (err) { }
             }
 
-            // Fallback: If no suggestions found, return null
-            if (finalSuggestions.length < 1) return null;
+            // Inject Real-time Trends into candidates (Phase 1.C)
+            try {
+                const dailyTrends = await fetchGoogleTrendsDaily("US");
+                const relevantTrends = dailyTrends.filter(t =>
+                    t.toLowerCase().includes("health") ||
+                    t.toLowerCase().includes("medicare") ||
+                    t.toLowerCase().includes("insurance")
+                );
+                candidates.push(...relevantTrends.slice(0, 5));
+            } catch (e) { }
 
-            // 4. Final Selection mechanism:
-            // SORT by Score (Highest First)
+            // 3. SCORE & FILTER (PHASE 3)
+            let finalSuggestions: any[] = [];
+
+            if (candidates && candidates.length > 0) {
+                candidates.forEach((realTerm, index) => {
+                    const seedWords = term.split(" ").length;
+                    const realWords = realTerm.split(" ").length;
+                    const diffThreshold = isTrend ? 1 : 2;
+
+                    if (realWords - seedWords < diffThreshold) return;
+                    if (realTerm === term || realTerm === term + "s") return;
+                    if (realTerm.length > 60) return;
+
+                    const bannedTerms = [
+                        "pdf", "download", "ebook", "free printable",
+                        "login", "sign in", "log in", "portal", "account",
+                        "phone number", "customer service", "contact number", "call",
+                        "near me", "locations", "office address"
+                    ];
+                    if (bannedTerms.some(ban => realTerm.includes(ban))) return;
+
+                    const metrics = analyzeKeywordMetrics(realTerm, term, "Google", index, isTrend);
+                    if (realTerm.length > term.length + 10) metrics.score += 5;
+
+                    finalSuggestions.push(metrics);
+                });
+            }
+
+            // FALLBACK & SELECT
+            if (finalSuggestions.length < 1) {
+                // If totally empty, return generic fallback to prevent UI crash
+                return {
+                    term: term,
+                    score: 0,
+                    volume: "N/A",
+                    difficulty: "Unknown",
+                    highlights: [],
+                    category: "General",
+                    suggestions: [],
+                    peopleAlsoAsk: []
+                };
+            }
+
             const sorted = finalSuggestions.sort((a, b) => b.score - a.score);
-
-            // Deduplicate (content diversity)
             const uniqueCandidates: any[] = [];
             const seenWords = new Set();
 
@@ -178,85 +190,114 @@ export async function POST(req: Request) {
                 }
             }
 
-            // STRICT QUALITY FILTER
-            // User wants "Strong Competition Analysis". 
-            // We only show keywords that generate a high score (>72) or are explicitly 'Easy'.
-            // providing meaningful choices rather than filling space.
+            // STRICT QUALITY FILTER (60+)
             let highQualityPicks = uniqueCandidates.filter(item =>
-                item.score >= 72 || item.difficulty === "Easy"
+                item.score >= 60 || item.difficulty === "Easy"
             );
 
-            // Safety: If nothing meets high standards, just take the absolute best one.
             if (highQualityPicks.length === 0 && uniqueCandidates.length > 0) {
                 highQualityPicks = [uniqueCandidates[0]];
             }
 
-            // Cap at 5, but don't force fill. Can be 1, 2, 3, 4, or 5.
             const finalPicks = highQualityPicks.slice(0, 5);
 
-            // Fetch People Also Ask questions for this term
-            let paaQuestions: string[] = [];
-            try {
-                const paaResults = await fetchPeopleAlsoAsk(term);
-                paaQuestions = paaResults.map(p => p.question).slice(0, 5);
-            } catch (e) {
-                console.warn(`[API] PAA fetch failed for ${term}`);
+            // 5. DEEP DIVE ANALYSIS (Phase 4 & 5)
+            // Top 3 checks
+            const suggestionsWithStrategy = await Promise.all(finalPicks.slice(0, 3).map(async (pick, idx) => {
+                let relatedQuestions: string[] = [];
+                try {
+                    relatedQuestions = await fetchRelatedQuestions(pick.keyword);
+                } catch (e) { }
+
+                let serpAnalysis = null;
+                try {
+                    serpAnalysis = await analyzeSERP(pick.keyword);
+                } catch (e) { }
+
+                let aiStrategy: any = null;
+                if (idx === 0) {
+                    try {
+                        const allSuggestionKeywords = finalPicks.map(p => p.keyword);
+                        aiStrategy = await generateAIStrategy(pick.keyword, serpAnalysis, relatedQuestions, allSuggestionKeywords);
+                    } catch (e) { }
+                }
+
+                let koreanTitle = pick.keyword;
+                if (aiStrategy?.translatedSuggestions && aiStrategy.translatedSuggestions[pick.keyword]) {
+                    koreanTitle = aiStrategy.translatedSuggestions[pick.keyword];
+                }
+
+                return {
+                    ...pick,
+                    korean: koreanTitle,
+                    peopleAlsoAsk: relatedQuestions.slice(0, 5),
+                    serpAnalysis,
+                    strategy: aiStrategy || pick.strategy
+                };
+            }));
+
+            // Copy translations
+            if (suggestionsWithStrategy[0]?.strategy?.translatedSuggestions) {
+                const transMap = suggestionsWithStrategy[0].strategy.translatedSuggestions;
+                suggestionsWithStrategy.forEach(s => {
+                    if (transMap[s.keyword]) s.korean = transMap[s.keyword];
+                });
             }
+
+            const bestSuggestion = suggestionsWithStrategy[0];
+            const safeScore = (bestSuggestion && bestSuggestion.score) || 0;
+            const safeDifficulty = bestSuggestion?.difficulty || "Normal";
+            const safeVolume = bestSuggestion?.volume || "N/A";
+            const highlights: string[] = [];
+
+            if (safeDifficulty === "Easy") highlights.push("🟢 경쟁 낮음");
+            else if (safeDifficulty === "Hard") highlights.push("🔴 경쟁 높음");
+            if (parseInt(safeVolume.replace(/,/g, '')) >= 1000) highlights.push("👁️ 조회수 높음");
+            if (isTrend) highlights.push("🔥 급상승 트렌드");
+            if (safeScore >= 80) highlights.push("👑 강력 추천");
 
             return {
                 term: term,
-                category: isTrend ? "Trending 🔥" : (finalPicks[0]?.intent || "General"),
-                suggestions: finalPicks,
-                peopleAlsoAsk: paaQuestions // NEW: PAA questions for this keyword
+                score: safeScore,
+                volume: safeVolume,
+                difficulty: safeDifficulty,
+                highlights: highlights,
+                category: isTrend ? "Trending 🔥" : (bestSuggestion?.intent || "General"),
+                suggestions: suggestionsWithStrategy, // These have the Deep Dive data
+                peopleAlsoAsk: bestSuggestion?.peopleAlsoAsk || []
             };
         }));
 
-        // Filter out nulls and empty keywords
-        let validKeywords = keywords.filter(k => k !== null && k.suggestions.length > 0);
+        // Cleanup nulls
+        let validKeywords = keywords.filter(k => k && k.suggestions && k.suggestions.length > 0);
 
-        // SORT COMPLETED CARDS:
-        // Bubble up the Focus Keywords that produced the HIGHEST SCORING suggestions.
-        // We want the "strongest" ones first.
-        validKeywords.sort((a, b) => {
-            const bestA = a!.suggestions[0]?.score || 0;
-            const bestB = b!.suggestions[0]?.score || 0;
-            return bestB - bestA;
-        });
-
-        // Limit to Top 3 as requested (User wants "Killer Quality" over Quantity)
+        validKeywords.sort((a, b) => (b as any).score - (a as any).score);
         validKeywords = validKeywords.slice(0, 3);
 
-        return NextResponse.json({ keywords: validKeywords });
+        return NextResponse.json({
+            seeds: manualSeeds.length > 0 ? manualSeeds : [],
+            results: validKeywords
+        });
 
     } catch (error) {
-        console.error("[API] Keyword Generation Failed:", error);
-        return NextResponse.json({ error: "Failed to generate keywords" }, { status: 500 });
+        console.error("[API] Error generating keywords:", error);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
 
 // ============================================================================
 // ENHANCED SCORING SYSTEM v2.0
 // ============================================================================
-// Factors considered:
-// 1. 검색관심도 (Search Interest) - Estimated from Google rank position
-// 2. 경쟁도 (Competition Level) - Based on keyword length and specificity
-// 3. 문서노출수 (Document Exposure) - Inferred from autocomplete ranking
-// 4. 키워드 구조 (Keyword Structure) - Word count, question format, modifiers
-// 5. 현재 이슈성 (Current Trends) - Trending topics, yearly keywords
-// 6. 수익 의도 (Commercial Intent) - Buyer intent signals
-// 7. 신선도 (Freshness) - Year markers, seasonal relevance
-// 8. 실행가능성 (Actionability) - Can we rank for this?
-// ============================================================================
 
 interface ScoringFactors {
-    searchInterest: number;      // 0-100: Estimated search volume
-    competition: number;         // 0-100: Lower is better (easier)
-    documentExposure: number;    // 0-100: Based on autocomplete position
-    keywordStructure: number;    // 0-100: Long-tail bonus
-    trendingBonus: number;       // 0-100: Current issue/trend
-    intentValue: number;         // 0-100: Commercial value
-    freshness: number;           // 0-100: Timeliness
-    actionability: number;       // 0-100: Can we actually rank?
+    searchInterest: number;
+    competition: number;
+    documentExposure: number;
+    keywordStructure: number;
+    trendingBonus: number;
+    intentValue: number;
+    freshness: number;
+    actionability: number;
 }
 
 function analyzeKeywordMetrics(keyword: string, seed: string, source: string, rankPosition: number, isTrending: boolean = false) {
@@ -265,89 +306,66 @@ function analyzeKeywordMetrics(keyword: string, seed: string, source: string, ra
     const currentYear = new Date().getFullYear();
     const nextYear = currentYear + 1;
 
-    // Initialize scoring factors
     const factors: ScoringFactors = {
-        searchInterest: 50,
-        competition: 50,
-        documentExposure: 50,
-        keywordStructure: 50,
+        searchInterest: 65,
+        competition: 60,
+        documentExposure: 60,
+        keywordStructure: 60,
         trendingBonus: 0,
-        intentValue: 30,
-        freshness: 40,
-        actionability: 50
+        intentValue: 50,
+        freshness: 60,
+        actionability: 60
     };
 
-    // =====================
-    // 1. SEARCH INTEREST (검색관심도)
-    // =====================
-    // Autocomplete rank 1-3 = high volume, 4-6 = medium, 7+ = low
-    // But lower volume = easier to rank (inverse relationship for us)
     if (rankPosition <= 2) {
-        factors.searchInterest = 90;  // High volume
-        factors.competition = 85;      // But high competition
+        factors.searchInterest = 95;
+        factors.competition = 80;
     } else if (rankPosition <= 5) {
+        factors.searchInterest = 85;
+        factors.competition = 70;
+    } else if (rankPosition <= 8) {
         factors.searchInterest = 70;
         factors.competition = 60;
-    } else if (rankPosition <= 8) {
-        factors.searchInterest = 50;
+    } else {
+        factors.searchInterest = 55;
         factors.competition = 40;
-    } else {
-        factors.searchInterest = 35;
-        factors.competition = 25;      // Low competition = opportunity
     }
 
-    // =====================
-    // 2. DOCUMENT EXPOSURE (문서노출수)
-    // =====================
-    // Lower autocomplete rank = more documents already competing
-    factors.documentExposure = Math.max(10, 100 - (rankPosition * 8));
+    factors.documentExposure = Math.max(30, 100 - (rankPosition * 5));
 
-    // =====================
-    // 3. KEYWORD STRUCTURE (키워드 구조)
-    // =====================
-    // Long-tail keywords (5+ words) are easier to rank
     if (wordCount >= 7) {
-        factors.keywordStructure = 95;  // Very long-tail = golden opportunity
-        factors.competition -= 30;
+        factors.keywordStructure = 98;
+        factors.competition -= 20;
     } else if (wordCount >= 5) {
-        factors.keywordStructure = 80;
-        factors.competition -= 15;
+        factors.keywordStructure = 90;
+        factors.competition -= 10;
     } else if (wordCount >= 4) {
-        factors.keywordStructure = 65;
-        factors.competition -= 5;
+        factors.keywordStructure = 80;
     } else if (wordCount >= 3) {
-        factors.keywordStructure = 50;
+        factors.keywordStructure = 70;
     } else {
-        factors.keywordStructure = 25;  // Short keywords are very competitive
-        factors.competition += 20;
+        factors.keywordStructure = 40;
+        factors.competition += 10;
     }
 
-    // Question format bonus (great for featured snippets)
     const questionWords = ["how", "what", "why", "when", "where", "who", "which", "can", "do", "is", "are"];
     if (questionWords.some(q => lowerKeyword.startsWith(q))) {
-        factors.keywordStructure += 15;
-        factors.actionability += 10;  // Questions are easier to answer
+        factors.keywordStructure += 10;
+        factors.actionability += 15;
     }
 
-    // =====================
-    // 4. TRENDING BONUS (현재 이슈성)
-    // =====================
     if (isTrending) {
-        factors.trendingBonus = 40;
-        factors.searchInterest += 20;
+        factors.trendingBonus = 50;
+        factors.searchInterest += 10;
         factors.freshness = 95;
     }
 
-    // Seasonal/Event keywords
     const seasonalWords = ["enrollment", "open enrollment", "tax", "deadline", "new year", "2025", "2026"];
     if (seasonalWords.some(w => lowerKeyword.includes(w))) {
         factors.trendingBonus += 20;
         factors.freshness += 20;
     }
 
-    // =====================
-    // 5. INTENT VALUE (수익 의도)
-    // =====================
     const highValueWords = ["best", "top", "review", "compare", "vs", "alternative"];
     const commercialWords = ["cost", "price", "fees", "premium", "rates", "cheap", "affordable", "free"];
     const transactionalWords = ["buy", "enroll", "sign up", "apply", "register", "get", "find"];
@@ -358,7 +376,7 @@ function analyzeKeywordMetrics(keyword: string, seed: string, source: string, ra
 
     if (highValueWords.some(w => lowerKeyword.includes(w))) {
         factors.intentValue = 90;
-        factors.competition -= 10; // High-value commercial keywords are worth pursuing
+        factors.competition -= 10;
         intent = "수익형 (비교)";
     } else if (commercialWords.some(w => lowerKeyword.includes(w))) {
         factors.intentValue = 85;
@@ -377,63 +395,70 @@ function analyzeKeywordMetrics(keyword: string, seed: string, source: string, ra
         intent = "일반 정보";
     }
 
-    // =====================
-    // 6. FRESHNESS (신선도)
-    // =====================
     if (lowerKeyword.includes(String(nextYear))) {
-        factors.freshness = 100;  // Next year = maximum freshness
+        factors.freshness = 100;
     } else if (lowerKeyword.includes(String(currentYear))) {
         factors.freshness = 85;
     } else if (lowerKeyword.includes("new") || lowerKeyword.includes("latest") || lowerKeyword.includes("update")) {
         factors.freshness = 70;
     }
 
-    // =====================
-    // 7. ACTIONABILITY (실행가능성)
-    // =====================
-    // Can we actually create good content for this?
     const badIntentWords = ["login", "portal", "phone number", "contact", "download pdf", "form"];
     if (badIntentWords.some(w => lowerKeyword.includes(w))) {
-        factors.actionability = 10;  // Can't help users with these
+        factors.actionability = 10;
     }
 
-    // Good content opportunities
     if (guideWords.some(w => lowerKeyword.includes(w)) || questionWords.some(q => lowerKeyword.startsWith(q))) {
         factors.actionability = 85;
     }
 
-    // =====================
-    // CALCULATE FINAL SCORE
-    // =====================
-    // Weighted formula - prioritize actionability and low competition
+    let persistence = 50;
+    const evergreenWords = ["basics", "guide", "explained", "what is", "how to", "steps", "checklist", "eligibility", "coverage"];
+    const seasonalOnlyWords = ["black friday", "cyber monday", "christmas", "thanksgiving", "new year"];
+
+    if (evergreenWords.some(w => lowerKeyword.includes(w))) {
+        persistence = 85;
+    } else if (seasonalOnlyWords.some(w => lowerKeyword.includes(w))) {
+        persistence = 25;
+    } else if (lowerKeyword.includes("enrollment") || lowerKeyword.includes("deadline")) {
+        persistence = 60;
+    }
+
+    let repeatability = 50;
+    const repeatPatternWords = ["annual", "yearly", "monthly", "every year", "open enrollment", "tax season", "renewal"];
+    const oneTimeWords = ["new law", "breaking", "announced", "just released"];
+
+    if (repeatPatternWords.some(w => lowerKeyword.includes(w))) {
+        repeatability = 90;
+    } else if (oneTimeWords.some(w => lowerKeyword.includes(w))) {
+        repeatability = 30;
+    } else if (evergreenWords.some(w => lowerKeyword.includes(w))) {
+        repeatability = 75;
+    }
+
     const weights = {
-        searchInterest: 0.10,      // 10% - We want some volume, but not priority
-        competition: 0.25,         // 25% - IMPORTANT: Lower competition is key
-        keywordStructure: 0.20,    // 20% - Long-tail matters
-        trendingBonus: 0.10,       // 10% - Nice bonus
-        intentValue: 0.15,         // 15% - Commercial value
-        freshness: 0.10,           // 10% - Timeliness
-        actionability: 0.10        // 10% - Can we actually rank
+        freshness: 0.18,
+        searchInterest: 0.18,
+        documentExposure: 0.18,
+        persistence: 0.14,
+        repeatability: 0.14,
+        trendingBonus: 0.11,
+        intentValue: 0.04,
+        keywordStructure: 0.03
     };
 
-    // Invert competition for scoring (lower competition = higher score)
-    const competitionScore = 100 - factors.competition;
-
     const rawScore =
+        (factors.freshness * weights.freshness) +
         (factors.searchInterest * weights.searchInterest) +
-        (competitionScore * weights.competition) +
-        (factors.keywordStructure * weights.keywordStructure) +
+        (factors.documentExposure * weights.documentExposure) +
+        (persistence * weights.persistence) +
+        (repeatability * weights.repeatability) +
         (factors.trendingBonus * weights.trendingBonus) +
         (factors.intentValue * weights.intentValue) +
-        (factors.freshness * weights.freshness) +
-        (factors.actionability * weights.actionability);
+        (factors.keywordStructure * weights.keywordStructure);
 
-    // Normalize to 0-99 range
     const finalScore = Math.min(99, Math.max(20, Math.round(rawScore)));
 
-    // =====================
-    // DETERMINE DIFFICULTY LABEL
-    // =====================
     let difficulty: string;
     if (factors.competition >= 70) {
         difficulty = "경쟁 높음";
@@ -443,9 +468,6 @@ function analyzeKeywordMetrics(keyword: string, seed: string, source: string, ra
         difficulty = "경쟁 낮음 (추천)";
     }
 
-    // =====================
-    // ESTIMATE VOLUME STRING
-    // =====================
     let volumeEstimate: number;
     if (factors.searchInterest >= 80) {
         volumeEstimate = 5000 + Math.random() * 5000;
@@ -461,9 +483,6 @@ function analyzeKeywordMetrics(keyword: string, seed: string, source: string, ra
         ? `${(volumeEstimate / 1000).toFixed(1)}k/mo`
         : `${Math.floor(volumeEstimate)}/mo`;
 
-    // =====================
-    // FRESHNESS LABEL
-    // =====================
     let freshnessLabel = "보통";
     if (factors.freshness >= 80) {
         freshnessLabel = "높음 (이슈)";
@@ -471,9 +490,6 @@ function analyzeKeywordMetrics(keyword: string, seed: string, source: string, ra
         freshnessLabel = "좋음";
     }
 
-    // =====================
-    // GENERATE STRATEGY FOR LOW-SCORING KEYWORDS
-    // =====================
     let strategy = null;
     if (finalScore < 60) {
         strategy = generateKeywordStrategy(keyword, factors, finalScore);
@@ -486,7 +502,7 @@ function analyzeKeywordMetrics(keyword: string, seed: string, source: string, ra
         intent: intent,
         volume: volStr,
         freshness: freshnessLabel,
-        strategy: strategy, // NEW: Attack strategy for low-scoring keywords
+        strategy: strategy,
         _factors: {
             searchInterest: Math.round(factors.searchInterest),
             competition: Math.round(factors.competition),
@@ -499,21 +515,12 @@ function analyzeKeywordMetrics(keyword: string, seed: string, source: string, ra
     };
 }
 
-// ============================================================================
-// KEYWORD STRATEGY GENERATOR
-// ============================================================================
-// When a keyword has low score, provide:
-// 1. Expanded keyword variations
-// 2. Question-based alternatives
-// 3. Detailed attack strategy
-// ============================================================================
-
 interface KeywordStrategy {
-    issue: string;                    // What's wrong with this keyword
-    expandedKeywords: string[];       // Suggested improved versions
-    questionKeywords: string[];       // Question-based alternatives
-    tactics: string[];                // Specific action items
-    contentAngle: string;             // Recommended content approach
+    issue: string;
+    expandedKeywords: string[];
+    questionKeywords: string[];
+    tactics: string[];
+    contentAngle: string;
 }
 
 function generateKeywordStrategy(keyword: string, factors: ScoringFactors, score: number): KeywordStrategy {
@@ -521,48 +528,23 @@ function generateKeywordStrategy(keyword: string, factors: ScoringFactors, score
     const wordCount = keyword.split(" ").length;
     const currentYear = new Date().getFullYear();
 
-    // Identify the main issue
     let issue = "";
     const issues: string[] = [];
 
-    if (factors.competition >= 70) {
-        issues.push("경쟁이 너무 치열함");
-    }
-    if (wordCount <= 3) {
-        issues.push("키워드가 너무 짧음 (롱테일 필요)");
-    }
-    if (factors.intentValue < 50) {
-        issues.push("수익 의도가 약함");
-    }
-    if (factors.freshness < 50) {
-        issues.push("시의성 부족");
-    }
-    if (factors.actionability < 50) {
-        issues.push("콘텐츠화 어려움");
-    }
+    if (factors.competition >= 70) issues.push("경쟁이 너무 치열함");
+    if (wordCount <= 3) issues.push("키워드가 너무 짧음 (롱테일 필요)");
+    if (factors.intentValue < 50) issues.push("수익 의도가 약함");
+    if (factors.freshness < 50) issues.push("시의성 부족");
+    if (factors.actionability < 50) issues.push("콘텐츠화 어려움");
 
     issue = issues.length > 0 ? issues.join(" / ") : "전반적으로 개선 필요";
 
-    // Generate expanded keyword variations
     const expandedKeywords: string[] = [];
-
-    // Add year for freshness
     if (!lowerKeyword.includes(String(currentYear)) && !lowerKeyword.includes(String(currentYear + 1))) {
         expandedKeywords.push(`${keyword} ${currentYear + 1}`);
     }
 
-    // Add intent modifiers
-    const intentModifiers = [
-        "how to",
-        "best",
-        "guide",
-        "step by step",
-        "for beginners",
-        "vs",
-        "cost",
-        "checklist"
-    ];
-
+    const intentModifiers = ["how to", "best", "guide", "step by step", "for beginners", "vs", "cost", "checklist"];
     for (const modifier of intentModifiers.slice(0, 3)) {
         if (!lowerKeyword.includes(modifier)) {
             if (modifier === "how to" || modifier === "best") {
@@ -573,20 +555,11 @@ function generateKeywordStrategy(keyword: string, factors: ScoringFactors, score
         }
     }
 
-    // Add specificity modifiers
-    const specificityModifiers = [
-        "for seniors",
-        "for 65+",
-        "in 2025",
-        "complete guide",
-        "explained simply"
-    ];
-
+    const specificityModifiers = ["for seniors", "for 65+", "in 2025", "complete guide", "explained simply"];
     for (const modifier of specificityModifiers.slice(0, 2)) {
         expandedKeywords.push(`${keyword} ${modifier}`);
     }
 
-    // Generate question-based alternatives
     const questionKeywords: string[] = [
         `what is ${keyword}`,
         `how does ${keyword} work`,
@@ -595,42 +568,35 @@ function generateKeywordStrategy(keyword: string, factors: ScoringFactors, score
         `is ${keyword} worth it`
     ];
 
-    // Generate tactical recommendations
     const tactics: string[] = [];
 
     if (factors.competition >= 70) {
         tactics.push("🎯 더 구체적인 니치 키워드로 시작하세요");
         tactics.push("📊 롱테일 키워드(5+ 단어)로 확장하세요");
     }
-
     if (wordCount <= 3) {
         tactics.push("📝 키워드에 연도, 지역, 또는 대상(예: seniors)을 추가하세요");
         tactics.push("❓ 질문 형태(How to, What is)로 변환하세요");
     }
-
     if (factors.intentValue < 50) {
         tactics.push("💰 'cost', 'best', 'compare' 같은 수익 키워드를 추가하세요");
         tactics.push("📈 문제 해결형 콘텐츠로 접근하세요 (예: mistakes, issues)");
     }
-
     if (factors.freshness < 50) {
         tactics.push("🗓️ 현재 연도나 'updated', 'latest'를 포함하세요");
         tactics.push("📰 최근 뉴스나 법률 변경사항을 언급하세요");
     }
-
     if (factors.actionability < 50) {
         tactics.push("✅ 실용적인 체크리스트나 단계별 가이드를 만드세요");
         tactics.push("🎬 FAQ 섹션을 추가해 Featured Snippet을 노리세요");
     }
 
-    // Default tactics
     if (tactics.length === 0) {
         tactics.push("📌 Related Questions (PAA)를 H2로 활용하세요");
         tactics.push("🔗 내부 링크로 관련 콘텐츠와 연결하세요");
         tactics.push("📊 구체적인 수치와 사례를 포함하세요");
     }
 
-    // Recommend content angle
     let contentAngle = "";
     if (factors.competition >= 70) {
         contentAngle = "개인 경험 기반의 'Ultimate Guide' 형식으로 차별화하세요. 대형 사이트가 다루지 않는 실질적인 팁에 집중하세요.";

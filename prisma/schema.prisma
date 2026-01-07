@@ -241,3 +241,11 @@ model AutomationLog {
 
   @@index([userId, createdAt])
 }
+
+model SystemUsage {
+  id            String   @id @default("system")
+  serpApiUsed   Int      @default(0)
+  serperUsed    Int      @default(0)
+  lastResetAt   DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

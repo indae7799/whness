@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { DEFAULT_SEEDS, DEFAULT_SUBREDDITS, getRandomSeeds, getHighPrioritySeeds, SEED_CATEGORIES } from "@/lib/research/defaultSeeds"
+import { DEFAULT_SEEDS, DEFAULT_SUBREDDITS, getRandomSeeds, getHighPrioritySeeds, SUPER_CATEGORIES } from "@/lib/research/defaultSeeds"
 import { fetchGoogleTrends, fetchRedditPosts, fetchStackExchange, scoreKeywords } from "@/services/research"
 
 export async function GET() {
@@ -7,7 +7,7 @@ export async function GET() {
     return NextResponse.json({
         seeds: DEFAULT_SEEDS,
         subreddits: DEFAULT_SUBREDDITS,
-        categories: SEED_CATEGORIES,
+        categories: SUPER_CATEGORIES,
         totalSeeds: DEFAULT_SEEDS.length
     })
 }

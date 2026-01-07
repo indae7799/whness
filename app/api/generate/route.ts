@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { buildMasterPrompt } from "@/lib/generation/prompt-builder"
 import { TEXT_MODELS, getTextModelById, DEFAULT_TEXT_MODEL, type TextModel } from "@/lib/config/models"
+import { callGoogleGenAI } from "@/lib/google"
 
 export const runtime = 'nodejs'
 
@@ -142,11 +143,53 @@ function stripCodeFences(content: string): string {
 export async function POST(req: Request) {
     try {
         const body = await req.json()
-        const { keyword, topic, textModelId } = body
 
-        if (!keyword) {
-            return NextResponse.json({ error: "Keyword is required" }, { status: 400 })
+        // CASE 1: Image Prompt Generation (High-End Prompt Creator)
+        if (body.prompt) {
+            console.log("[Generate] Processing Image Prompt Request...");
+
+            const IMAGE_PROMPT_SYSTEM = `
+You are an expert AI Art Director for a New York Lifestyle Blog.
+Generate a MIDJOURNEY PROMPT (\`--v 6.0\`) based on the User's Topic.
+
+[STYLE RULES - STRICT]
+- Genre: Documentary Photography / Street Photography / Unsplash Style
+- Camera: Fujifilm X100V or Leica M6 (Film simulation)
+- Lens: 35mm (Natural perspective)
+- Lighting: Natural Day Light, Window Light, or Raw Flash (No dramatic studio lighting)
+- Texture: Kodak Portra 400 grain, slight motion blur, 4k realistic
+
+[CONTENT RULES]
+- **NO FACES**: Focusing on hands, objects, feet, back of head, or silhouettes.
+- **RAW REALITY**: Capture the messiness of life (overflowing trash can, stack of papers, crumpled receipts).
+- **POV**: First-person view (looking at hands) or Over-the-shoulder.
+- **Space**: Authentic NYC environments (subway tiles, messy desk, busy crosswalk).
+
+[OUTPUT FORMAT]
+Documentary photography of [SCENE/OBJECT FOCUS], [NATURAL LIGHTING], shot on Fujifilm X100V, raw style, authentic texture, 16:9 aspect ratio --ar 16:9 --v 6.0 --no text --no face --no posed models --no cinematic lighting
+
+
+`;
+
+            // Clean up the input (remove previous hardcoded instructions if any)
+            const topic = body.prompt.replace(/Create a premium.*about: /, "").split(".")[0].replace(/"/g, "").trim();
+            const userInstruction = `Topic: "${topic}". \nCreate a photorealistic prompt focusing on STORY and ATMOSPHERE.`;
+
+            // Use the robust callGoogleGenAI (System Prompt, User Prompt, Model)
+            const result = await callGoogleGenAI(
+                IMAGE_PROMPT_SYSTEM,
+                userInstruction,
+                body.model || 'gemini-1.5-pro'
+            );
+            return NextResponse.json({ result: result.trim() });
         }
+
+        // CASE 2: Legacy Article Generation (existing logic)
+        const { keyword, topic, textModelId } = body
+        if (!keyword) {
+            return NextResponse.json({ error: "Keyword or Prompt is required" }, { status: 400 })
+        }
+        // ... rest of the function ...
 
         const focusKeyword = keyword.phrase || keyword
 

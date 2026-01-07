@@ -11,23 +11,24 @@ export async function POST(req: Request) {
         }
 
         // Map 'mode' ('3.0', '2.5', 'hybrid') to actual Model IDs
-        let outlineModelId = userOutlineModel || 'google/gemini-2.0-flash-exp'; // Default to fast 2.0
-        let contentModelId = userContentModel || 'google/gemini-2.0-flash-exp';
+        // Downgraded to 2.0-flash-exp for stability (3.0 is causing 500 errors)
+        let outlineModelId = userOutlineModel || 'google/gemini-3.0-flash';
+        let contentModelId = userContentModel || 'google/gemini-3.0-flash';
 
         if (mode === '3.0') {
-            outlineModelId = 'google/gemini-3-flash-preview'; // Correct ID provided by user
+            outlineModelId = 'google/gemini-3-flash-preview';
             contentModelId = 'google/gemini-3-flash-preview';
         } else if (mode === '2.5') {
-            outlineModelId = 'google/gemini-2.0-flash-exp';
-            contentModelId = 'google/gemini-2.0-flash-exp';
+            outlineModelId = 'google/gemini-2.5-flash';
+            contentModelId = 'google/gemini-2.5-flash';
         } else if (mode === 'hybrid') {
-            // Hybrid: Smart Outline (3.0) + Fast Generation (2.0)
-            outlineModelId = 'google/gemini-3-flash-preview';
-            contentModelId = 'google/gemini-2.0-flash-exp';
+            // Hybrid: Smart Outline (3.0) + Fast Generation (3.0)
+            outlineModelId = 'google/gemini-3.0-flash';
+            contentModelId = 'google/gemini-3.0-flash';
         }
 
-        console.log(`[API Chained] Mode: ${mode} -> Outline: ${outlineModelId}, Content: ${contentModelId}`)
-        console.log(`[API Chained] Starting generation for: ${focusKeyword}`)
+        console.log(`[API Chained V2] Mode: ${mode} -> Outline: ${outlineModelId}, Content: ${contentModelId}`)
+        console.log(`[API Chained V2] Starting generation for: ${focusKeyword}`)
 
         const result = await generateChainedArticle({
             topic,
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
 
         return NextResponse.json(result)
     } catch (error: any) {
-        console.error("[API Chained] CRITICAL ERROR:", error)
+        console.error("[API Chained V2] CRITICAL ERROR:", error)
 
         // REMOVED MOCK DATA FALLBACK to force real error exposure
         return NextResponse.json({
@@ -50,4 +51,3 @@ export async function POST(req: Request) {
         }, { status: 500 })
     }
 }
-

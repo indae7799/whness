@@ -58,55 +58,50 @@ export function ModelQuotaDashboard() {
     }, [])
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {quotas.map((q) => (
-                <div key={q.modelId} className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex items-center justify-between mb-4">
+                <div key={q.modelId} className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                            <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-xl">
-                                <Zap className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-gray-900 dark:text-gray-100">{q.name}</h3>
-                                <p className="text-xs text-gray-500">Free Tier Quota (2026)</p>
-                            </div>
+                            <Zap className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                            <h3 className="font-bold text-sm text-gray-900 dark:text-gray-100">{q.name}</h3>
                         </div>
-                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                            <ShieldCheck className="w-3 h-3 mr-1" /> Active
+                        <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200 px-1.5 py-0.5">
+                            Active
                         </Badge>
                     </div>
 
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-xs">
-                                <span className="text-gray-500 font-medium flex items-center gap-1">
-                                    <Battery className="w-3 h-3" /> Daily Requests (RPD)
+                    <div className="space-y-3">
+                        <div className="space-y-1">
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-gray-500 flex items-center gap-1">
+                                    <Battery className="w-3 h-3" /> RPD
                                 </span>
                                 <span className="text-gray-900 dark:text-gray-100 font-bold">
                                     {q.rpdUsed} / {q.rpdTotal}
                                 </span>
                             </div>
-                            <Progress value={(q.rpdUsed / q.rpdTotal) * 100} className="h-2 bg-gray-100 dark:bg-zinc-800" />
+                            <Progress value={(q.rpdUsed / q.rpdTotal) * 100} className="h-1.5 bg-gray-100 dark:bg-zinc-800" />
                         </div>
 
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-xs">
-                                <span className="text-gray-500 font-medium flex items-center gap-1">
-                                    <Zap className="w-3 h-3" /> Tokens Per Minute (TPM)
+                        <div className="space-y-1">
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-gray-500 flex items-center gap-1">
+                                    <Zap className="w-3 h-3" /> TPM
                                 </span>
                                 <span className="text-gray-900 dark:text-gray-100 font-bold">
                                     {(q.tpmUsed / 1000).toFixed(0)}k / 1M
                                 </span>
                             </div>
-                            <Progress value={(q.tpmUsed / q.tpmTotal) * 100} className="h-2 bg-gray-100 dark:bg-zinc-800" />
+                            <Progress value={(q.tpmUsed / q.tpmTotal) * 100} className="h-1.5 bg-gray-100 dark:bg-zinc-800" />
                         </div>
                     </div>
 
-                    <div className="mt-4 pt-4 border-t border-gray-100 dark:border-zinc-800 flex items-center justify-between">
-                        <span className="text-[10px] text-gray-400">Resets At: {q.resetTime}</span>
+                    <div className="mt-3 pt-2 border-t border-gray-100 dark:border-zinc-800 flex items-center justify-between">
+                        <span className="text-[9px] text-gray-400">Resets: {q.resetTime}</span>
                         {q.rpdUsed > 1000 && (
-                            <span className="text-[10px] text-orange-500 flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3" /> Warning: Low Limit
+                            <span className="text-[9px] text-orange-500 flex items-center gap-1">
+                                <AlertTriangle className="w-2.5 h-2.5" /> Low
                             </span>
                         )}
                     </div>

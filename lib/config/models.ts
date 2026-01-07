@@ -158,7 +158,7 @@ export const IMAGE_MODELS: ImageModel[] = [
 ]
 
 // Get default free models
-export const DEFAULT_TEXT_MODEL = TEXT_MODELS.find(m => m.id === 'google/gemini-2.0-flash-exp:free') || TEXT_MODELS[0]
+export const DEFAULT_TEXT_MODEL = TEXT_MODELS.find(m => m.id === 'google/gemini-3.0-flash:free') || TEXT_MODELS[0]
 export const DEFAULT_IMAGE_MODEL = IMAGE_MODELS[0] // Pollinations.ai
 
 // Helper functions
