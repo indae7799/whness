@@ -71,9 +71,16 @@ The keyword analysis system generates a content strategy that includes:
 
 ## STRUCTURE
 - **H1**: 1 (Page Title)
-- **H2**: Minimum 5 sections (natural flow)
+- **H2**: 4-8 sections (expand naturally based on topic depth)
 - **H3**: Only when H2 content needs subdivision
 - **H4+**: Never use
+
+**Heading Style Rules:**
+- ❌ Do NOT use numbered headings like "1. Topic", "2. Topic", "1.1 Subtopic", "1.2 Subtopic"
+- ❌ Avoid mechanical/academic numbering (1-1, 1-2, 2-1, 2-2, etc.)
+- ✅ Use natural, descriptive headings that flow like a conversation
+- ✅ Good examples: "Understanding Medicare Advantage", "Why Medigap Might Be Right for You"
+- ✅ Bad examples: "1. Medicare Advantage", "1.1 Core Features", "2. Medigap"
 
 SEO Requirements:
 - Focus keyword in at least 3 H2 headings
@@ -192,16 +199,22 @@ You must output **raw HTML code**. Do NOT output Markdown.
 **Container Wrapper**:
 <div style="max-width: 740px; margin: 0 auto; font-family: Cambria, Georgia, 'Times New Roman', serif; line-height: 1.75; color: #1a202c;">
 
-**Typography Styles**:
-- **H1**: <h1 style="font-family: Georgia, 'Times New Roman', serif; font-size: clamp(28px, 5vw, 42px); font-weight: 700; color: #111827; margin-bottom: 32px; margin-top: 60px; letter-spacing: -0.02em; line-height: 1.2;">
-- **H2**: <h2 style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: clamp(22px, 4vw, 28px); font-weight: 700; color: #111827; margin-top: 48px; margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
-- **H3**: <h3 style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: clamp(18px, 3.5vw, 22px); font-weight: 600; color: #1f2937; margin-top: 32px; margin-bottom: 16px;">
+**Typography Styles (ALL HEADINGS USE GEORGIA FOR CONSISTENCY)**:
+- **H1**: <h1 style="font-family: Georgia, serif; font-size: clamp(28px, 5vw, 42px); font-weight: 700; color: #111827; margin-bottom: 32px; margin-top: 60px; letter-spacing: -0.02em; line-height: 1.2;">
+- **H2**: <h2 style="font-family: Georgia, serif; font-size: clamp(22px, 4vw, 28px); font-weight: 700; color: #111827; margin-top: 48px; margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+- **H3**: <h3 style="font-family: Georgia, serif; font-size: clamp(18px, 3.5vw, 22px); font-weight: 600; color: #1f2937; margin-top: 32px; margin-bottom: 16px;">
 - **Paragraphs**: <p style="font-family: Cambria, Georgia, serif; font-size: 18px; line-height: 1.75; margin-bottom: 28px; color: #2d3748;">
 - **Lists**: <ul style="font-family: Cambria, Georgia, serif; font-size: 18px; line-height: 1.75; margin-bottom: 28px; padding-left: 20px;">
 - **List Items**: <li style="margin-bottom: 16px; padding: 4px 0;"> <!-- Increased touch area -->
 - **Links**: <a href="..." style="color: #2563eb; text-decoration: underline; font-weight: 600; padding: 8px 4px; margin: -8px -4px; display: inline-block;"> <!-- Touch-friendly padding -->
 - **Bold**: <strong style="font-weight: 700; color: #000000;">
-- **Tables**: <table style="width: 100%; border-collapse: collapse; margin: 32px 0; font-size: 17px; overflow-x: auto; display: block;"> <!-- Mobile scroll -->
+
+**Table Formatting (CRITICAL):**
+- **Table Wrapper**: <div style="overflow-x: auto; margin: 32px 0;"> <!-- Wrap table for mobile scroll -->
+- **Table**: <table style="width: 100%; border-collapse: collapse; font-size: 17px; min-width: 500px;">
+- **Table Header**: <th style="border: 1px solid #d1d5db; padding: 12px 16px; text-align: left; background-color: #f9fafb; font-weight: 600;">
+- **Table Cell**: <td style="border: 1px solid #d1d5db; padding: 12px 16px; text-align: left;">
+
 
 **STYLE INHERITANCE WARNING**:
 Even with container styles, you MUST repeat font-family on EVERY <p>, <ul>, <li> tag individually.

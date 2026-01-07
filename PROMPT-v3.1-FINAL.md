@@ -56,9 +56,16 @@
 
 ### 구조
 - H1: 1개
-- H2: 최소 3개(자연스럽게, 억지로 만들지말고)
+- H2: 4-8개 (주제 깊이에 따라 자연스럽게 확장)
 - H3: 필요시에만
 - H4+: 금지
+
+### 제목 스타일 규칙
+- ❌ **번호 매기기 금지**: "1. 주제", "2. 주제", "1.1 소주제" 같은 형식 사용 금지
+- ❌ 기계적/학술적 번호 (1-1, 1-2, 2-1 등) 피하기
+- ✅ 대화하듯 자연스럽고 설명적인 제목 사용
+- ✅ 좋은 예: "Understanding Medicare Advantage", "Why Medigap Might Be Right for You"
+- ✅ 나쁜 예: "1. Medicare Advantage", "1.1 Core Features"
 
 ### 분량
 - **최소**: 2,000단어
@@ -219,14 +226,14 @@ Lee, Kim, Park, Chen (주제와 직접 관련 없으면 사용 금지)
 <!-- Container -->
 <div style="max-width: 740px; margin: 0 auto; font-family: Cambria, Georgia, 'Times New Roman', serif; line-height: 1.75; color: #1a202c;">
 
-<!-- H1 (반응형: 모바일 28px ~ 데스크탑 42px) -->
-<h1 style="font-family: Georgia, 'Times New Roman', serif; font-size: clamp(28px, 5vw, 42px); font-weight: 700; color: #111827; margin-bottom: 32px; margin-top: 60px;">
+<!-- H1 (반응형 - Georgia 통일) -->
+<h1 style="font-family: Georgia, serif; font-size: clamp(28px, 5vw, 42px); font-weight: 700; color: #111827; margin-bottom: 32px; margin-top: 60px;">
 
-<!-- H2 (반응형) -->
-<h2 style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: clamp(22px, 4vw, 28px); font-weight: 700; color: #111827; margin-top: 48px; margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+<!-- H2 (반응형 - Georgia 통일) -->
+<h2 style="font-family: Georgia, serif; font-size: clamp(22px, 4vw, 28px); font-weight: 700; color: #111827; margin-top: 48px; margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
 
-<!-- H3 (반응형) -->
-<h3 style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: clamp(18px, 3.5vw, 22px); font-weight: 600; color: #1f2937; margin-top: 32px; margin-bottom: 16px;">
+<!-- H3 (반응형 - Georgia 통일) -->
+<h3 style="font-family: Georgia, serif; font-size: clamp(18px, 3.5vw, 22px); font-weight: 600; color: #1f2937; margin-top: 32px; margin-bottom: 16px;">
 
 <!-- Paragraph -->
 <p style="font-family: Cambria, Georgia, serif; font-size: 18px; line-height: 1.75; margin-bottom: 28px; color: #2d3748;">
@@ -238,8 +245,12 @@ Lee, Kim, Park, Chen (주제와 직접 관련 없으면 사용 금지)
 <!-- Link (터치 영역 확대) -->
 <a href="..." style="color: #2563eb; text-decoration: underline; font-weight: 600; padding: 8px 4px; margin: -8px -4px; display: inline-block;">
 
-<!-- Table (모바일 스크롤) -->
-<table style="width: 100%; border-collapse: collapse; margin: 32px 0; font-size: 17px; overflow-x: auto; display: block;">
+<!-- Table (모바일 스크롤 - Wrapper 필수) -->
+<div style="overflow-x: auto; margin: 32px 0;"> <!-- 테이블 감싸기 -->
+<table style="width: 100%; border-collapse: collapse; font-size: 17px; min-width: 500px;">
+<th style="border: 1px solid #d1d5db; padding: 12px 16px; text-align: left; background-color: #f9fafb; font-weight: 600;">
+<td style="border: 1px solid #d1d5db; padding: 12px 16px; text-align: left;">
+</div>
 ```
 
 > ⚠️ **중요**: 모든 `<p>`, `<ul>`, `<li>` 태그에 font-family를 개별적으로 반복 작성할 것!

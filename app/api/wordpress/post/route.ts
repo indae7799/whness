@@ -100,11 +100,11 @@ export async function POST(req: Request) {
             htmlContent = htmlContent.replace(/<ol>/g, `<ol style="${commonFont} font-size: 18px; margin-bottom: 24px; padding-left: 20px;">`);
             htmlContent = htmlContent.replace(/<li>/g, '<li style="margin-bottom: 10px;">');
 
-            // Headings
+            // Headings (All use Georgia for consistency)
             // H1: strict 60px top margin requirement
-            htmlContent = htmlContent.replace(/<h1>/g, `<h1 style="${commonFont} font-size: 36px; font-weight: 700; text-align: center; margin-top: 60px; margin-bottom: 40px; letter-spacing: -0.5px;">`);
-            htmlContent = htmlContent.replace(/<h2>/g, `<h2 style="${commonFont} font-size: 28px; font-weight: 700; margin-top: 50px; margin-bottom: 20px; border-bottom: 1px solid #eaeaea; padding-bottom: 12px;">`);
-            htmlContent = htmlContent.replace(/<h3>/g, `<h3 style="${commonFont} font-size: 24px; font-weight: 600; margin-top: 35px; margin-bottom: 15px;">`);
+            htmlContent = htmlContent.replace(/<h1>/g, `<h1 style="font-family: Georgia, serif; font-size: 36px; font-weight: 700; text-align: center; margin-top: 60px; margin-bottom: 40px; letter-spacing: -0.5px;">`);
+            htmlContent = htmlContent.replace(/<h2>/g, `<h2 style="font-family: Georgia, serif; font-size: 28px; font-weight: 700; margin-top: 50px; margin-bottom: 20px; border-bottom: 1px solid #eaeaea; padding-bottom: 12px;">`);
+            htmlContent = htmlContent.replace(/<h3>/g, `<h3 style="font-family: Georgia, serif; font-size: 24px; font-weight: 600; margin-top: 35px; margin-bottom: 15px;">`);
 
             // Blockquotes
             htmlContent = htmlContent.replace(/<blockquote>/g, `<blockquote style="border-left: 4px solid #333; padding-left: 20px; margin: 30px 0; font-style: italic; background: #f9f9f9; padding: 20px;">`);
@@ -237,7 +237,7 @@ export async function POST(req: Request) {
             }
         };
 
-        console.log("[API] Publishing to WP:", { title: postTitle, keyword: focusKeyword });
+        console.log("[API] Publishing to WP:", { title: postTitle, focusKeyword: finalFocusKeyword, metaDesc: metaDesc });
 
         const postRes = await fetch(`${wpUrl}/wp-json/wp/v2/posts`, {
             method: "POST",
@@ -254,7 +254,41 @@ export async function POST(req: Request) {
         }
 
         const result = await postRes.json();
-        return NextResponse.json({ success: true, link: result.link });
+        const postId = result.id;
+
+        // 11. CRITICAL: Update Rank Math Meta Fields Separately
+        // WordPress REST API sometimes doesn't save custom meta fields on create
+        // So we make a separate POST call to update the meta after creation
+        try {
+            console.log(`[API] Updating Rank Math meta for post ${postId}...`);
+
+            const metaUpdateRes = await fetch(`${wpUrl}/wp-json/wp/v2/posts/${postId}`, {
+                method: "POST",
+                headers: {
+                    "Authorization": authHeader,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    meta: {
+                        rank_math_focus_keyword: finalFocusKeyword,
+                        _rank_math_focus_keyword: finalFocusKeyword,
+                        rank_math_description: metaDesc || `Learn about ${postTitle}`,
+                        rank_math_title: metaTitle || postTitle,
+                    }
+                })
+            });
+
+            if (metaUpdateRes.ok) {
+                console.log(`[API] Rank Math meta updated successfully for post ${postId}`);
+            } else {
+                console.warn(`[API] Failed to update Rank Math meta: ${await metaUpdateRes.text()}`);
+            }
+        } catch (metaError) {
+            console.warn("[API] Rank Math meta update error:", metaError);
+            // Don't fail the entire operation, post is already created
+        }
+
+        return NextResponse.json({ success: true, link: result.link, postId });
 
     } catch (error: any) {
         console.error("[API] Publish Error:", error);
