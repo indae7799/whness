@@ -47,8 +47,9 @@ export default function ContentGenerationProgress({ keyword, onComplete }: Conte
                 setContent("")
 
                 // START IMAGE GENERATION IN PARALLEL
-                // We don't await this, so it runs concurrently
-                handleGenerateImage()
+                // REMOVED: We don't want to generate image immediately with just keyword.
+                // We will wait for content to populate to generate a context-aware prompt.
+                // handleGenerateImage()
 
                 const response = await fetch("/api/generate", {
                     method: "POST",
@@ -102,6 +103,19 @@ export default function ContentGenerationProgress({ keyword, onComplete }: Conte
         }
     }, []) // Empty dependency array
 
+    // Effect to trigger image generation once we have enough content
+    useEffect(() => {
+        if (!hasStarted) return
+        if (isGeneratingImage) return
+        if (featuredImage) return
+
+        // Wait until we have enough content (approx 1500 chars, usually covers Intro + part of H2)
+        // This ensures the prompt generator has enough context to avoid generic images
+        if (content.length > 1500) {
+            handleGenerateImage()
+        }
+    }, [content, hasStarted, isGeneratingImage, featuredImage])
+
     useEffect(() => {
         if (!showDebug) return
         if (!articleRef.current) return
@@ -119,19 +133,44 @@ export default function ContentGenerationProgress({ keyword, onComplete }: Conte
     }, [content])
 
     const handleGenerateImage = async () => {
-        if (isGeneratingImage || featuredImage) return // Prevent duplicate calls
+        if (isGeneratingImage || featuredImage) return
         setIsGeneratingImage(true)
+
         try {
+            // 1. Generate a Smart Image Prompt based on the partial content
+            console.log("[Client] Generating smart image prompt...")
+            const promptResponse = await fetch("/api/generation/image-prompt", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    content: content, // Send the current generated content
+                    focusKeyword: keyword.phrase
+                })
+            })
+
+            let finalPrompt = ""
+            if (promptResponse.ok) {
+                const promptData = await promptResponse.json()
+                finalPrompt = promptData.prompt
+                console.log("[Client] Smart Prompt:", finalPrompt)
+            } else {
+                console.warn("[Client] Failed to generate smart prompt, falling back to keyword")
+            }
+
+            // 2. Generate Image using the smart prompt (or fallback)
             const response = await fetch("/api/image", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ keyword: keyword.phrase })
+                body: JSON.stringify({
+                    keyword: keyword.phrase,
+                    prompt: finalPrompt // Pass the generated prompt if available
+                })
             })
+
             const data = await response.json()
             if (data.imageUrl) {
                 setFeaturedImage(data.imageUrl)
             } else {
-                // Silently fail or show toast in real app, but for now just log
                 console.error("Image generation error:", data.error)
             }
         } catch (error) {
@@ -332,7 +371,7 @@ export default function ContentGenerationProgress({ keyword, onComplete }: Conte
                                 }
                             }
                             return processedContent;
-                    })()}
+                        })()}
                     </ReactMarkdown>
                 </article>
                 <div ref={bottomRef} />
