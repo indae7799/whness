@@ -72,20 +72,26 @@ async function fetchRelatedPosts(
     count: number = 3
 ): Promise<RelatedPost[]> {
     try {
+        // Sanitize URL
+        const cleanBaseUrl = baseUrl.replace(/\/$/, "")
+        const endpoint = `${cleanBaseUrl}/wp-json/wp/v2/posts?per_page=${count + 2}&status=publish&_embed=wp:featuredmedia`
+
+        console.log(`[RelatedPosts] Fetching from: ${endpoint}`)
+
         // Fetch recent posts with embedded featured media
-        const response = await fetch(
-            `${baseUrl}/wp-json/wp/v2/posts?per_page=${count + 2}&status=publish&_embed=wp:featuredmedia`,
-            {
-                headers: { Authorization: auth },
-            }
-        )
+        const response = await fetch(endpoint, {
+            headers: { Authorization: auth },
+        })
 
         if (!response.ok) {
-            console.error("Failed to fetch related posts")
+            console.error(`[RelatedPosts] Failed to fetch. Status: ${response.status}`)
+            const errText = await response.text()
+            console.error(`[RelatedPosts] Error details: ${errText}`)
             return []
         }
 
         const posts = await response.json()
+        console.log(`[RelatedPosts] Found ${posts.length} raw posts`)
 
         const relatedPosts: RelatedPost[] = posts
             .filter((post: any) => post.title?.rendered !== excludeTitle)
@@ -104,7 +110,9 @@ async function fetchRelatedPosts(
                 }
             })
 
+        console.log(`[RelatedPosts] Returning ${relatedPosts.length} related posts after filter`)
         return relatedPosts
+
     } catch (error) {
         console.error("Error fetching related posts:", error)
         return []
