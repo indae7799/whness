@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
         let intro = [];
         let h2 = "";
         let h2Content = [];
-        
+
         let currentSection = "start"; // start, intro, h2, after_h2
 
         for (const line of lines) {
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
 
         const systemPrompt = `You are an expert AI Art Director and SEO Strategist.
 Your task is to analyze the provided minimal content (H1 Title, Introduction, First Section) and generate TWO things:
-1. A Midjourney Image Prompt
+1. A Creative & Varied Midjourney Image Prompt
 2. A Perfect SEO Alt Text
 
 INPUT DATA:
@@ -64,13 +64,14 @@ INPUT DATA:
 - Content: The user will provide the H1, Intro, and First H2 of a blog post.
 
 GUIDELINES:
-1. **IMAGE PROMPT**:
+1. **IMAGE PROMPT (CRITICAL: AVOID REPETITION)**:
+   - **PROBLEM**: We have too many "cluttered desk", "documents on table", and "laptop with coffee" images.
+   - **SOLUTION**: You MUST generate diverse scenes.
+   - **Dynamic Settings**: Use specific locations (NYC Street, Cozy Living Room, Park Bench, Airport Gate, Hospital Waiting Room, Modern Kitchen, Cafe Window).
+   - **Human Focus**: Focus on the *person* and their *emotion* (relief, stress, joy, contemplation), not just objects.
+   - **Forbidden**: DO NOT generate a "messy desk with papers" unless the text explicitly demands it. Avoid generic stock photo look.
    - **Style**: ALLOW ALL STYLES (Photorealistic, Cinematic, 3D, Painting, Illustration) **EXCEPT CARTOON**.
-   - **Forbidden Style**: NO CARTOON, NO ANIME.
-   - **Content**: Visualize the core essence of the intro.
-   - **Composition**: Professional, high quality.
-   - **No Restrictions**: Text, faces, and human figures ARE ALLOWED if they fit the concept.
-   - **Format**: "[Subject Description], [Lighting/Mood], [Style/Camera] --ar 16:9 --v 6.0"
+   - **Format**: "[Subject Description with specific location/action], [Lighting/Mood], [Style/Camera] --ar 16:9 --v 6.0"
 
 2. **ALT TEXT (MOST IMPORTANT)**:
    - **Priority**: This is the most critical part. 
@@ -89,25 +90,25 @@ You must return STRICT JSON only. No markdown code blocks.
 
         // Using FREE Google GenAI
         const rawResponse = await callGoogleGenAI(systemPrompt, userPrompt);
-        
+
         // Clean response if it contains markdown code blocks
         const cleanedResponse = rawResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-        
+
         let jsonResponse;
         try {
             jsonResponse = JSON.parse(cleanedResponse);
         } catch (e) {
-             console.error("Failed to parse JSON from AI response:", cleanedResponse);
-             // Fallback if JSON fails
-             jsonResponse = { 
-                prompt: cleanedResponse, 
-                altText: `${focusKeyword} - illustrated concept` 
-             };
+            console.error("Failed to parse JSON from AI response:", cleanedResponse);
+            // Fallback if JSON fails
+            jsonResponse = {
+                prompt: cleanedResponse,
+                altText: `${focusKeyword} - illustrated concept`
+            };
         }
 
-        return NextResponse.json({ 
-            prompt: jsonResponse.prompt, 
-            altText: jsonResponse.altText 
+        return NextResponse.json({
+            prompt: jsonResponse.prompt,
+            altText: jsonResponse.altText
         });
 
     } catch (error) {
