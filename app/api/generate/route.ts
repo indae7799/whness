@@ -153,27 +153,31 @@ You are an expert AI Art Director for a New York Lifestyle Blog.
 Generate a MIDJOURNEY PROMPT (\`--v 6.0\`) based on the User's Topic.
 
 [STYLE RULES - STRICT]
-- Genre: Documentary Photography / Street Photography / Unsplash Style
+- Genre: Cinematic Documentary / Atmospheric Street Photography
 - Camera: Fujifilm X100V or Leica M6 (Film simulation)
-- Lens: 35mm (Natural perspective)
-- Lighting: Natural Day Light, Window Light, or Raw Flash (No dramatic studio lighting)
+- Lens: 35mm or 50mm (Natural perspective)
+- Lighting: Natural Golden Hour, Moody Window Light, or Cinematic Shadows
 - Texture: Kodak Portra 400 grain, slight motion blur, 4k realistic
 
-[CONTENT RULES]
-- **NO FACES**: Focusing on hands, objects, feet, back of head, or silhouettes.
-- **RAW REALITY**: Capture the messiness of life (overflowing trash can, stack of papers, crumpled receipts).
-- **POV**: First-person view (looking at hands) or Over-the-shoulder.
-- **Space**: Authentic NYC environments (subway tiles, messy desk, busy crosswalk).
+[CONTENT RULES - STRICT PROHIBITIONS]
+- ⛔ **NO HANDS WRITING**: Do not show hands holding pens or marking papers.
+- ⛔ **NO DESKS / WORKSPACES**: Do not show messy desks, laptops, or office supplies.
+- ⛔ **NO PAPERWORK**: Do not show stacks of paper, receipts, or forms.
+- ⛔ **NO FACES**: Focus on the *scene*, *atmosphere*, *back of head*, or *silhouettes*.
+
+[REQUIRED FOCUS]
+- **Atmosphere**: Capture the *feeling* of the topic (e.g., anxiety = dark rainy window; relief = sunny park bench).
+- **Location**: Authentic NYC environments (brownstone stoop, subway platform, park, cafe window).
+- **Metaphor**: If the topic is abstract (e.g., insurance), use a visual metaphor (e.g., an umbrella in the rain, a sturdy lock, a bridge).
 
 [OUTPUT FORMAT]
-Documentary photography of [SCENE/OBJECT FOCUS], [NATURAL LIGHTING], shot on Fujifilm X100V, raw style, authentic texture, 16:9 aspect ratio --ar 16:9 --v 6.0 --no text --no face --no posed models --no cinematic lighting
-
-
+Cinematic documentary photography of [SCENE/OBJECT FOCUS], [NATURAL LIGHTING], shot on Fujifilm X100V, raw style, authentic texture, 16:9 aspect ratio --ar 16:9 --v 6.0 --no text --no face --no hands --no desk --no paper
 `;
 
-            // Clean up the input (remove previous hardcoded instructions if any)
-            const topic = body.prompt.replace(/Create a premium.*about: /, "").split(".")[0].replace(/"/g, "").trim();
-            const userInstruction = `Topic: "${topic}". \nCreate a photorealistic prompt focusing on STORY and ATMOSPHERE.`;
+            // DIRECT PASS-THROUGH: The frontend now sends a highly structured prompt.
+            // We should trust the frontend's context and instructions.
+            // My fixed SYSTEM PROMPT (above) will act as the final guardrail/style enforcer.
+            const userInstruction = body.prompt;
 
             // Use the robust callGoogleGenAI (System Prompt, User Prompt, Model)
             const result = await callGoogleGenAI(

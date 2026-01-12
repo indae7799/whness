@@ -13,10 +13,10 @@ export async function POST(req: Request) {
         // Build image prompt
         const imagePrompt = prompt || `Professional blog header image about "${keyword}". Modern, clean, NYC aesthetic. No text, no faces.`
 
-        // Use multi-model image service (defaults to Unsplash free)
+        // Use multi-model image service (defaults to DALL-E 3 HD)
         const result = await generateBlogImage({
             prompt: imagePrompt,
-            imageModelId: imageModelId || 'unsplash' // Default to free Unsplash
+            imageModelId: imageModelId || 'dall-e-3-hd' // Default to High Quality DALL-E
         })
 
         return NextResponse.json({

@@ -54,48 +54,35 @@ export async function POST(req: NextRequest) {
             analysisText = content.substring(0, 2500);
         }
 
-        const systemPrompt = `You are an expert AI Art Director and SEO Strategist.
-Your task is to analyze the provided minimal content (H1 Title, Introduction, First Section) and generate TWO things:
-1. A Creative & Varied Midjourney Image Prompt
-2. A Perfect SEO Alt Text
+        const systemPrompt = `You are an expert AI Art Director.
+Your task is to analyze the provided blog context (H1 Title, Introduction, First Section) and generate a High-Quality Image Prompt and SEO Alt Text.
 
 INPUT DATA:
 - Focus Keyword: "${focusKeyword || 'General'}"
-- Content: The user will provide the H1, Intro, and First H2 of a blog post.
+- Context: H1 (Title), Intro, and First H2.
 
 GUIDELINES:
-1. **IMAGE PROMPT (EXTREME VARIETY REQUIRED)**:
-   - **CRITICAL ISSUE**: The AI keeps generating "hands writing on a desk". **THIS IS BANNED**.
-   - **BANNED CONCEPTS**: NO hands writing, NO holding pens, NO messy desks, NO piles of paper, NO "art director", NO "proofs".
-   - **REQUIRED APPROACH**:
-     - **Scene-Based**: Show the *place* or *situation*, not the desk.
-     - **Lifestyle**: Show people *living the outcome* (e.g., walking in a park, entering a building, talking to a doctor).
-     - **Metaphor**: Use abstract concepts if the topic is dry (e.g., a path in a forest for "guidance").
-   - **Style**: ALLOW ALL STYLES (Cinematic, Photorealistic, 3D Render, Oil Painting, Matrix style) **EXCEPT CARTOON**.
-   - **Format**: "[Scene Description], [Lighting], [Camera/Style] --ar 16:9 --v 6.0"
+1. **IMAGE PROMPT**:
+   - **Goal**: Create a visual metaphor or realistic scene that represents the *core theme* of the content.
+   - **Style**: Cinematic, Photorealistic, 3D Render, or Professional Photography.
+   - **Constraint**: **NO CARTOON, NO ANIME, NO ILLUSTRATION**.
+   - **Banned**: **NO DESKS, NO PAPERWORK, NO LAPTOPS, NO OFFICE INTERIORS**.
+   - **Variety**: Focus on *cinematic scenes*, *outdoor settings*, *emotional close-ups*, or *abstract metaphors*.
+   - **Format**: "[Subject/Scene Description], [Lighting], [Style/Camera] --ar 16:9 --v 6.0"
 
-   **EXAMPLES (DO NOT COPY, JUST INSPIRE)**:
-   - *Topic: Insurance* -> "A worried young couple looking at a laptop in a modern sunlit kitchen, cozy atmosphere, cinematic lighting --ar 16:9 --v 6.0"
-   - *Topic: Moving* -> "Wide shot of a moving truck on a florida highway with palm trees at sunset, warm golden hour light, architectural photography --ar 16:9 --v 6.0"
-   - *Topic: Health* -> "Close up of an elderly woman smiling peacefully in a garden, soft bokeh background, portrait photography, 85mm lens --ar 16:9 --v 6.0"
+2. **ALT TEXT**:
+   - Must contain the **Focus Keyword** naturally.
+   - 5-10 words describing the image.
 
-2. **ALT TEXT (MOST IMPORTANT)**:
-   - **Priority**: This is the most critical part. 
-   - **Rule**: Must contain the **Focus Keyword** naturally.
-   - **Length**: 5-10 words describing the image specifically.
-   - **Format**: Just the text explanation.
-
-OUTPUT FORMAT:
-You must return STRICT JSON only. No markdown code blocks.
+OUTPUT FORMAT (STRICT JSON):
 {
-  "prompt": "your midjourney prompt here...",
-  "altText": "your seo optimized alt text here..."
+  "prompt": "your midjourney prompt...",
+  "altText": "your alt text..."
 }`;
 
-        const userPrompt = `Here is the blog content structure:\n\n${analysisText}\n\nCRITICAL INSTRUCTION: DO NOT GENERATE A DESK OR HANDS WRITING. GENERATE A SCENE/PLACE.`;
+        const userPrompt = `Here is the blog content structure:\n\n${analysisText}`;
 
-        // Using FREE Google GenAI with High Temperature for creativity
-        // Passing undefined for modelId to use default, 0.9 for temperature
+        // Using FREE Google GenAI with high temperature for variety
         const rawResponse = await callGoogleGenAI(systemPrompt, userPrompt, undefined, 0.9);
 
         // Clean response if it contains markdown code blocks
