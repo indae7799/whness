@@ -21,12 +21,25 @@ export async function POST(req: Request) {
         const currentDate = new Date();
         const nextYear = currentDate.getFullYear() + 1;
 
-        // 1. Fetch Google Trends (US) - Hot Topics (Phase 1.C)
+        // 1. Fetch Google Trends (US) - Hot Topics (Phase 1.B)
         const trendSeedsRaw = await fetchGoogleTrendsDaily("US");
+
+        // Quality filter for trending seeds (not forced 2, quality-based 0~2)
+        const nicheKeywords = /health|medicare|insurance|tax|finance|medical|benefit|coverage|enrollment|premium|deductible/i;
         const trendSeeds = trendSeedsRaw
-            .filter(t => /health|medicare|insurance|tax|finance|medical|benefit|coverage/i.test(t))
-            .slice(0, 2)
-            .map(t => ({ term: t, weight: 5, source: 'trend' as const }));
+            .filter(t => {
+                // Must match our niche
+                if (!nicheKeywords.test(t)) return false;
+                // Must have at least 2 words (not too generic)
+                if (t.split(' ').length < 2) return false;
+                // Exclude overly generic terms
+                if (/^(health|insurance|tax|medicare)$/i.test(t)) return false;
+                return true;
+            })
+            .slice(0, 2)  // Max 2, but could be 0 or 1 if quality not met
+            .map(t => ({ term: t, source: 'trend' as const }));
+
+        console.log(`[Phase 1] Trending seeds found: ${trendSeeds.length}`, trendSeeds.map(s => s.term));
 
         let evergreenSeeds: { term: string; source: 'evergreen' | 'manual' }[] = [];
 
@@ -38,33 +51,39 @@ export async function POST(req: Request) {
                 source: 'manual' as const
             }));
         } else {
-            // [AUTO MODE]
-            console.log("[API] Auto Mode: True Random Selection");
-            const sortedSeeds = [...DEFAULT_SEEDS];
-            const shuffle = (array: any[]) => {
-                for (let i = array.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [array[i], array[j]] = [array[j], array[i]];
+            // [AUTO MODE] - Pure Random Selection with Category Diversity
+            console.log("[API] Auto Mode: Pure Random Selection (No Weight Bias)");
+
+            // Fisher-Yates shuffle with timestamp entropy
+            const shuffle = <T>(array: T[]): T[] => {
+                const arr = [...array];
+                const seed = Date.now();
+                for (let i = arr.length - 1; i > 0; i--) {
+                    const j = Math.floor(((seed * (i + 1) * Math.random()) % 1) * (i + 1));
+                    [arr[i], arr[j]] = [arr[j], arr[i]];
                 }
-                return array;
+                return arr;
             };
 
-            const highWeightSeeds = shuffle(sortedSeeds.filter(s => (s.weight || 2) >= 4));
-            const mediumWeightSeeds = shuffle(sortedSeeds.filter(s => (s.weight || 2) < 4));
+            // Get unique categories
+            const categories = [...new Set(DEFAULT_SEEDS.map(s => s.category))];
+            const shuffledCategories = shuffle(categories);
 
-            const selectedHigh = highWeightSeeds.slice(0, 3);
-            const selectedMedium = mediumWeightSeeds.slice(0, 3);
-            const candidatePool = shuffle([...selectedHigh, ...selectedMedium]);
-
+            // Select 1 seed from each of 3 different random categories (ensures diversity)
             const selectedTerms = new Set<string>();
-            for (const seed of candidatePool) {
-                if (!selectedTerms.has(seed.term) && evergreenSeeds.length < 3) {
-                    selectedTerms.add(seed.term);
-                    evergreenSeeds.push({ term: seed.term, source: 'evergreen' as const });
+            for (const category of shuffledCategories) {
+                if (evergreenSeeds.length >= 3) break;
+
+                const categorySeeds = shuffle(DEFAULT_SEEDS.filter(s => s.category === category));
+                if (categorySeeds.length > 0 && !selectedTerms.has(categorySeeds[0].term)) {
+                    selectedTerms.add(categorySeeds[0].term);
+                    evergreenSeeds.push({ term: categorySeeds[0].term, source: 'evergreen' as const });
                 }
             }
+
+            // Fallback: if still need more, pick randomly from all
             if (evergreenSeeds.length < 3) {
-                const allShuffled = shuffle(sortedSeeds);
+                const allShuffled = shuffle(DEFAULT_SEEDS);
                 for (const seed of allShuffled) {
                     if (!selectedTerms.has(seed.term) && evergreenSeeds.length < 3) {
                         selectedTerms.add(seed.term);
@@ -72,7 +91,8 @@ export async function POST(req: Request) {
                     }
                 }
             }
-            console.log(`[API] Selected auto seeds (Randomized):`, evergreenSeeds.map(s => s.term));
+
+            console.log(`[API] Selected seeds (Random from ${DEFAULT_SEEDS.length} total):`, evergreenSeeds.map(s => s.term));
         }
 
         // Combine Seeds and Process
@@ -201,49 +221,28 @@ export async function POST(req: Request) {
 
             const finalPicks = highQualityPicks.slice(0, 5);
 
-            // 5. DEEP DIVE ANALYSIS (Phase 4 & 5)
-            // Top 3 checks
+            // 5. PREPARE SUGGESTIONS (NO SERP HERE - Phase 4 happens later)
+            // SERP is called only for the FINAL selected keyword, not for all candidates
             const suggestionsWithStrategy = await Promise.all(finalPicks.slice(0, 3).map(async (pick, idx) => {
+                // Only fetch PAA (free API)
                 let relatedQuestions: string[] = [];
                 try {
                     relatedQuestions = await fetchRelatedQuestions(pick.keyword);
                 } catch (e) { }
 
-                let serpAnalysis = null;
-                try {
-                    serpAnalysis = await analyzeSERP(pick.keyword);
-                } catch (e) { }
-
-                let aiStrategy: any = null;
-                if (idx === 0) {
-                    try {
-                        const allSuggestionKeywords = finalPicks.map(p => p.keyword);
-                        aiStrategy = await generateAIStrategy(pick.keyword, serpAnalysis, relatedQuestions, allSuggestionKeywords);
-                    } catch (e) { }
-                }
-
-                let koreanTitle = pick.keyword;
-                if (aiStrategy?.translatedSuggestions && aiStrategy.translatedSuggestions[pick.keyword]) {
-                    koreanTitle = aiStrategy.translatedSuggestions[pick.keyword];
-                }
+                // NO SERP CALL HERE - will be done in Phase 4 for final selection only
+                // This saves 12+ SERP calls per request
 
                 return {
                     ...pick,
-                    korean: koreanTitle,
+                    korean: pick.keyword,  // Will be translated later if needed
                     peopleAlsoAsk: relatedQuestions.slice(0, 5),
-                    serpAnalysis,
-                    strategy: aiStrategy || pick.strategy
+                    serpAnalysis: null,  // Placeholder - filled in Phase 4
+                    strategy: null  // Placeholder - filled in Phase 5
                 };
             }));
 
-            // Copy translations
-            if (suggestionsWithStrategy[0]?.strategy?.translatedSuggestions) {
-                const transMap = suggestionsWithStrategy[0].strategy.translatedSuggestions;
-                suggestionsWithStrategy.forEach(s => {
-                    if (transMap[s.keyword]) s.korean = transMap[s.keyword];
-                });
-            }
-
+            // Get best suggestion for metadata
             const bestSuggestion = suggestionsWithStrategy[0];
             const safeScore = (bestSuggestion && bestSuggestion.score) || 0;
             const safeDifficulty = bestSuggestion?.difficulty || "Normal";
@@ -263,7 +262,7 @@ export async function POST(req: Request) {
                 difficulty: safeDifficulty,
                 highlights: highlights,
                 category: isTrend ? "Trending 🔥" : (bestSuggestion?.intent || "General"),
-                suggestions: suggestionsWithStrategy, // These have the Deep Dive data
+                suggestions: suggestionsWithStrategy,
                 peopleAlsoAsk: bestSuggestion?.peopleAlsoAsk || []
             };
         }));
@@ -273,6 +272,52 @@ export async function POST(req: Request) {
 
         validKeywords.sort((a, b) => (b as any).score - (a as any).score);
         validKeywords = validKeywords.slice(0, 3);
+
+        // ========== PHASE 3.5: SERP VALIDATION (Smart Loop) ==========
+        // Try up to 2 candidates to find a REAL opportunity
+        console.log(`[Phase 3.5] Smart Validation starting...`);
+
+        let validatedCount = 0;
+        let bestCandidateIndex = 0;
+
+        for (let i = 0; i < Math.min(3, validKeywords.length); i++) {
+            if (validatedCount >= 2) break; // Max 2 API calls here
+            const keyword = validKeywords[i];
+            const topSuggestion = keyword.suggestions[0];
+
+            if (topSuggestion && topSuggestion.keyword) {
+                try {
+                    console.log(`[Phase 3.5] Analyzing SERP for: "${topSuggestion.keyword}"`);
+                    const serpAnalysis = await analyzeSERP(topSuggestion.keyword);
+                    validatedCount++;
+
+                    // Add SERP analysis to the suggestion
+                    topSuggestion.serpAnalysis = serpAnalysis;
+
+                    // Check if this is a "Good Opportunity"
+                    const gapCount = serpAnalysis?.contentGaps?.length || 0;
+                    console.log(`[Phase 3.5] Gaps found: ${gapCount}`);
+
+                    if (gapCount > 0) {
+                        console.log(`[Phase 3.5] ✅ WINNER FOUND! Promoting Candidate #${i + 1}`);
+                        bestCandidateIndex = i;
+                        break; // Stop looking, we found a winner!
+                    } else {
+                        console.log(`[Phase 3.5] ❌ Weak opportunity. Trying next candidate...`);
+                    }
+                } catch (e) {
+                    console.error(`[Phase 3.5] SERP analysis failed for ${topSuggestion.keyword}:`, e);
+                }
+            }
+        }
+
+        // Re-order keywords to put the winner first
+        if (bestCandidateIndex > 0) {
+            console.log(`[Phase 3.5] Promoting winner (Index ${bestCandidateIndex}) to top position`);
+            const winner = validKeywords[bestCandidateIndex];
+            validKeywords.splice(bestCandidateIndex, 1);
+            validKeywords.unshift(winner);
+        }
 
         return NextResponse.json({
             seeds: manualSeeds.length > 0 ? manualSeeds : [],
@@ -460,12 +505,12 @@ function analyzeKeywordMetrics(keyword: string, seed: string, source: string, ra
     const finalScore = Math.min(99, Math.max(20, Math.round(rawScore)));
 
     let difficulty: string;
-    if (factors.competition >= 70) {
+    if (factors.competition >= 65) {
         difficulty = "경쟁 높음";
-    } else if (factors.competition >= 45) {
-        difficulty = "경쟁 중간";
+    } else if (factors.competition >= 50) {
+        difficulty = "경쟁 보통";
     } else {
-        difficulty = "경쟁 낮음 (추천)";
+        difficulty = "경쟁 낮음";
     }
 
     let volumeEstimate: number;

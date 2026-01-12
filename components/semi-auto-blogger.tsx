@@ -24,6 +24,7 @@ interface GeneratedKeyword {
     competition: string
     score: number
     suggestions: any[]
+    peopleAlsoAsk?: string[]
 }
 
 interface AIAnalysisResult {
@@ -208,13 +209,21 @@ ${FIXED_PROMPT_CONTENT}
 `.trim();
 
         try {
+            // Get SERP analysis from Phase 3.5 (if available)
+            const selectedSuggestion = selectedKeywordObj?.suggestions?.[0];
+            const serpAnalysisData = selectedSuggestion?.serpAnalysis || null;
+            const paaData = selectedSuggestion?.peopleAlsoAsk || selectedKeywordObj?.peopleAlsoAsk || [];
+
             const res = await fetch(`/api/generate/chained-v2?t=${Date.now()}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    topic: fullPrompt, // Send the full prompt instructions
-                    focusKeyword: selectedKeywordObj?.term || selectedLongTail, // FIX: Backend expects 'focusKeyword', not 'keywords' array
-                    mode: generationMode // Use the user-selected model
+                    topic: fullPrompt,
+                    focusKeyword: selectedKeywordObj?.term || selectedLongTail,
+                    mode: generationMode,
+                    // Pass Phase 3.5 data to Phase 4-5
+                    serpAnalysis: serpAnalysisData,
+                    peopleAlsoAsk: paaData
                 })
             });
 
@@ -283,22 +292,69 @@ ${FIXED_PROMPT_CONTENT}
         setIsGeneratingPrompt(true);
         try {
             const topic = selectedLongTail || selectedKeywordObj?.term || "Lifestyle";
+
+            // Randomize Visual Style (Focused on Documentary/Cinematic as requested)
+            const visualStyles = [
+                "Cinematic Documentary: Moody lighting, depth of field, storytelling atmosphere, shot on 35mm.",
+                "Magnum Photos Style: High contrast, raw and authentic, capturing a decisive moment.",
+                "Editorial Journalism: Realistic but artfully composed, focusing on the human element or environment.",
+                "Atmospheric Noir: High drama, shadows, window light, emphasizing the mood of the scene."
+            ];
+            const randomStyle = visualStyles[Math.floor(Math.random() * visualStyles.length)];
+
+            // Extract richer context (H1, H2s, Intro)
+            let contextForImage = `TOPIC: ${topic}\n`;
+            if (generatedContent?.content) {
+                const htmlContent = generatedContent.content;
+                const h1Match = htmlContent.match(/<h1[^>]*>(.*?)<\/h1>/i);
+
+                // Extract all H2 headers for broader context
+                const h2Matches = htmlContent.match(/<h2[^>]*>(.*?)<\/h2>/gi);
+                const h2Texts = h2Matches ? h2Matches.map((h: string) => h.replace(/<[^>]+>/g, '')).join(", ") : "";
+
+                const firstParagraphMatch = htmlContent.match(/<p[^>]*>(.*?)<\/p>/i);
+
+                if (h1Match) contextForImage += `TITLE: ${h1Match[1].replace(/<[^>]+>/g, '')}\n`;
+                if (h2Texts) contextForImage += `KEY SECTIONS: ${h2Texts}\n`;
+                if (firstParagraphMatch) contextForImage += `INTRO SCENE: ${firstParagraphMatch[1].replace(/<[^>]+>/g, '').substring(0, 400)}\n`;
+            }
+
             const res = await fetch("/api/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    prompt: `Create a premium Midjourney/Flux image prompt for a blog post header about: "${topic}".
-                    Content Angle: ${aiAnalysis?.strategy?.angle || 'General info'}.
-                    
-                    CRITICAL STYLE GUIDELINES:
-                    - Setting: Modern New York City aesthetic (or relevant US context)
-                    - Vibe: Authentic, Candid, High-end Editorial, "Unsplash-style"
-                    - Camera: Shot on 35mm film (Kodak Portra 400), slight film grain, soft natural lighting
-                    - Composition: Cinematic, depth of field, minimal and clean
-                    - NEGATIVE PROMPT: No text, no logos, no 3D renders, no cartoon, no illustration, no fake AI gloss.
-                    
-                    Return ONLY the English prompt string.`,
-                    model: "gemini-2.0-flash-exp"
+                    prompt: `You are an expert Art Director. Create a UNIQUE, CINEMATIC DOCUMENTARY image prompt based on the INTRO SCENE.
+
+${contextForImage}
+
+⛔ **STRICT BAN LIST (YOU MUST OBEY)**:
+- **NO HANDS** (Do not show hands holding pens/papers)
+- **NO DESKS / TABLES** (Do not show the workspace)
+- **NO PAPERS / DOCUMENTS / FORMS** (Do not show the actual paperwork)
+- **NO PILLS / MEDICINE**
+
+✅ **REQUIRED DIRECTION**:
+1. **FOCUS ON EMOTION & ATMOSPHERE**:
+   - Instead of showing "doing paperwork", show the **Person's Face** (tired, thinking, hopeful) in a cinematic close-up.
+   - Or show the **Environment** (a lonely window at night, a busy city street, a quiet waiting room) to set the mood.
+2. **STYLE: Magnum Photos / High-End Documentary**:
+   - Grainy, raw, authentic lighting.
+   - Use reflected light, silhouettes, or negative space.
+3. **CREATIVE ANGLES**:
+   - Low angle looking up at a building.
+   - Wide shot of a room with the person small in the frame.
+   - Reflection in a window.
+
+VISUAL STYLE: **${randomStyle}**
+
+IMAGE SPECS:
+- Photorealistic, 8k resolution
+- Film grain, Kodak Portra 400 aesthetic
+- NO text, NO logos
+
+OUTPUT FORMAT:
+Return ONLY the English image prompt string. Start directly with the visual description.`,
+                    model: "gemini-3-flash-preview"
                 })
             });
 
@@ -357,127 +413,119 @@ ${FIXED_PROMPT_CONTENT}
 
 
     return (
-        <div className="max-w-7xl mx-auto space-y-6 pb-32 p-4">
+        <div className="max-w-7xl mx-auto space-y-4 pb-32 px-3 sm:px-4 md:px-6 overflow-x-hidden w-full">
 
-
-
-            {/* ROW 2: Step Indicators */}
-            <div className="flex flex-col md:flex-row items-center justify-between bg-white dark:bg-zinc-900 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 gap-4">
-                <div className="flex items-center gap-4 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
+            {/* ROW 1: Step Indicators + Seed Mode Toggle (Same Row) */}
+            <div className="flex flex-col md:flex-row items-center justify-between bg-white dark:bg-zinc-900 p-3 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-800 gap-3">
+                {/* Left: Step Badges */}
+                <div className="flex items-center gap-3 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
                     <StepBadge active={step === "topic"} done={step !== "topic"} num={1} label="키워드 발굴" />
-                    <div className="w-8 h-px bg-gray-200 shrink-0" />
+                    <div className="w-6 h-px bg-gray-200 shrink-0" />
                     <StepBadge active={step === "keyword"} done={step === "writing" || step === "finish"} num={2} label="전략 구성" />
-                    <div className="w-8 h-px bg-gray-200 shrink-0" />
+                    <div className="w-6 h-px bg-gray-200 shrink-0" />
                     <StepBadge active={step === "writing"} done={step === "finish"} num={3} label="AI 글쓰기" />
-                    <div className="w-8 h-px bg-gray-200 shrink-0" />
+                    <div className="w-6 h-px bg-gray-200 shrink-0" />
                     <StepBadge active={step === "finish"} done={false} num={4} label="발행 및 편집" />
                 </div>
-                {step !== "topic" && (
-                    <Button variant="ghost" size="sm" onClick={() => setStep("topic")} className="text-gray-400 hover:text-red-500 shrink-0">
-                        <RotateCcw className="w-4 h-4 mr-2" /> 초기화
-                    </Button>
-                )}
-            </div>
 
-
-
-            {/* ROW 3 Bottom Cards: Seed Mode (Left) + Action Buttons (Right) */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left Card: Seed Keyword Mode Selection */}
-                <Card className="p-5 bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900 h-full">
-                    <div className="flex items-center gap-2 mb-3">
-                        <Sparkles className="w-5 h-5 text-blue-600" />
-                        <h3 className="font-bold text-blue-900 dark:text-blue-100">시드 키워드 모드</h3>
-                    </div>
-
-                    {/* Mode Buttons */}
-                    <div className="grid grid-cols-2 gap-3 mb-4">
+                {/* Right: Seed Mode Toggle + Reset */}
+                <div className="flex items-center gap-2 shrink-0">
+                    {/* Seed Mode Toggle */}
+                    <div className="flex items-center bg-blue-50 dark:bg-blue-950/50 rounded-lg p-1 gap-1">
                         <Button
-                            variant={seedMode === 'auto' ? 'default' : 'outline'}
-                            className={`w-full ${seedMode === 'auto' ? 'bg-blue-600 hover:bg-blue-700' : 'border-blue-200 hover:bg-blue-100 dark:border-blue-800'}`}
+                            variant="ghost"
+                            size="sm"
+                            className={`h-7 px-3 text-xs font-medium rounded-md transition-all ${seedMode === 'auto' ? 'bg-blue-600 text-white shadow-sm hover:bg-blue-700' : 'text-blue-700 hover:bg-blue-100'}`}
                             onClick={() => setSeedMode('auto')}
                         >
-                            <Zap className="w-4 h-4 mr-2" />
-                            자동 발굴
+                            <Zap className="w-3 h-3 mr-1" />
+                            자동
                         </Button>
                         <Button
-                            variant={seedMode === 'manual' ? 'default' : 'outline'}
-                            className={`w-full ${seedMode === 'manual' ? 'bg-blue-600 hover:bg-blue-700' : 'border-blue-200 hover:bg-blue-100 dark:border-blue-800'}`}
+                            variant="ghost"
+                            size="sm"
+                            className={`h-7 px-3 text-xs font-medium rounded-md transition-all ${seedMode === 'manual' ? 'bg-blue-600 text-white shadow-sm hover:bg-blue-700' : 'text-blue-700 hover:bg-blue-100'}`}
                             onClick={() => setSeedMode('manual')}
                         >
-                            <PenTool className="w-4 h-4 mr-2" />
-                            수동 선택
+                            <PenTool className="w-3 h-3 mr-1" />
+                            수동
                         </Button>
                     </div>
 
-                    {/* Seed Selector & Analyze Button */}
+                    {step !== "topic" && (
+                        <Button variant="ghost" size="sm" onClick={() => setStep("topic")} className="h-7 text-gray-400 hover:text-red-500 shrink-0">
+                            <RotateCcw className="w-3.5 h-3.5 mr-1" /> 초기화
+                        </Button>
+                    )}
+                </div>
+            </div>
+
+            {/* ROW 2: Seed Selector + SERP Usage + Action Center */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Left: Seed Selector & SERP Usage (Compact) */}
+                <Card className="p-4 bg-blue-50/50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900">
                     {step === "topic" && (
-                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-4">
+                        <div className="space-y-3">
                             <SeedSelector
                                 mode={seedMode}
                                 onModeChange={setSeedMode}
                                 onSeedsSelected={setSelectedSeeds}
                             />
 
-                            {/* API Usage Status (Requested UI) */}
-                            <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 dark:bg-zinc-800/50 rounded-lg border border-gray-100 dark:border-zinc-700">
-                                {/* SERP API Status */}
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-center text-xs">
-                                        <span className="font-semibold flex items-center gap-1.5 text-gray-700 dark:text-gray-300">
-                                            <Search className="w-3.5 h-3.5" /> SERP API
-                                        </span>
-                                        <Badge variant="outline" className="text-[9px] h-4 px-1 bg-green-50 border-green-200 text-green-700">
-                                            Active
-                                        </Badge>
+                            {/* SERP Usage (Compact Inline) */}
+                            <div className="grid grid-cols-2 gap-2 p-2 bg-white/80 dark:bg-zinc-800/50 rounded-lg border border-gray-100 dark:border-zinc-700">
+                                {/* SERP API */}
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5">
+                                        <Search className="w-3 h-3 text-gray-500" />
+                                        <span className="text-[10px] font-medium text-gray-600">SERP API</span>
                                     </div>
-                                    <div className="h-1.5 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">
-                                        <div className="h-full bg-green-500" style={{ width: `${(serpUsage.serpApi / 100) * 100}%` }} />
-                                    </div>
-                                    <div className="flex justify-between text-[9px] text-gray-500">
-                                        <span>Limit: 3 searches/post</span>
-                                        <span>{serpUsage.serpApi} / 100</span>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-12 h-1 bg-gray-200 rounded-full overflow-hidden">
+                                            <div className="h-full bg-green-500" style={{ width: `${(serpUsage.serpApi / 100) * 100}%` }} />
+                                        </div>
+                                        <span className="text-[9px] text-gray-500">{serpUsage.serpApi}/100</span>
                                     </div>
                                 </div>
-
-                                {/* Serper API Status */}
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-center text-xs">
-                                        <span className="font-semibold flex items-center gap-1.5 text-gray-700 dark:text-gray-300">
-                                            <Zap className="w-3.5 h-3.5" /> Serper API
-                                        </span>
-                                        <Badge variant="outline" className="text-[9px] h-4 px-1 bg-green-50 border-green-200 text-green-700">
-                                            Active
-                                        </Badge>
+                                {/* Serper */}
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5">
+                                        <Zap className="w-3 h-3 text-gray-500" />
+                                        <span className="text-[10px] font-medium text-gray-600">Serper</span>
                                     </div>
-                                    <div className="h-1.5 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">
-                                        <div className="h-full bg-green-500" style={{ width: `${(serpUsage.serper / 2500) * 100}%` }} />
-                                    </div>
-                                    <div className="flex justify-between text-[9px] text-gray-500">
-                                        <span>Total Usage</span>
-                                        <span>{serpUsage.serper} / 2500</span>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-12 h-1 bg-gray-200 rounded-full overflow-hidden">
+                                            <div className="h-full bg-green-500" style={{ width: `${(serpUsage.serper / 2500) * 100}%` }} />
+                                        </div>
+                                        <span className="text-[9px] text-gray-500">{serpUsage.serper}/2500</span>
                                     </div>
                                 </div>
                             </div>
 
                             <Button
                                 size="lg"
-                                className="w-full h-12 text-base font-bold shadow-md bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all text-white"
+                                className="w-full h-10 text-sm font-bold shadow-md bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all text-white"
                                 onClick={handleFindKeywords}
                                 disabled={loading || (seedMode === 'manual' && selectedSeeds.length === 0)}
                             >
                                 {loading ? (
                                     <>
-                                        <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                                        가중치 기반 분석 중...
+                                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                        분석 중...
                                     </>
                                 ) : (
                                     <>
-                                        <Search className="w-5 h-5 mr-2" />
-                                        가중치 기반 최적 시드 분석
+                                        <Search className="w-4 h-4 mr-2" />
+                                        키워드 분석 시작
                                     </>
                                 )}
                             </Button>
+                        </div>
+                    )}
+                    {step !== "topic" && (
+                        <div className="text-center py-4 text-gray-400 text-sm">
+                            <CheckCircle2 className="w-6 h-6 mx-auto mb-1 text-green-500" />
+                            키워드 분석 완료
                         </div>
                     )}
                 </Card>
@@ -669,79 +717,83 @@ ${FIXED_PROMPT_CONTENT}
 
                 {/* Right: SERP Analysis Dashboard */}
                 <Card className="overflow-hidden border-indigo-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm flex flex-col h-full">
-                    {selectedKeywordObj && (selectedKeywordObj as any).serpAnalysis ? (
-                        <>
-                            <div className="bg-indigo-50/50 dark:bg-indigo-900/20 p-4 border-b border-indigo-100 dark:border-zinc-800 flex justify-between items-center shrink-0">
-                                <div className="flex items-center gap-2">
-                                    <Badge variant="outline" className="bg-indigo-100 text-indigo-700 border-indigo-200 text-[10px] h-5 px-1.5">
-                                        Live
-                                    </Badge>
-                                    <h3 className="font-bold text-sm text-indigo-950 dark:text-indigo-100 truncate max-w-[200px]">
-                                        경쟁 분석 리포트
-                                    </h3>
-                                </div>
-                                <div className="text-[10px] text-gray-400">
-                                    {(selectedKeywordObj as any).serpAnalysis.source}
-                                </div>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto p-0">
-                                <div className="divide-y divide-gray-100 dark:divide-zinc-800">
-                                    {/* 1. Gaps */}
-                                    <div className="p-4">
-                                        <h4 className="font-semibold text-xs text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-2">
-                                            <Target className="w-3.5 h-3.5" /> 공략 포인트 (Gaps)
-                                        </h4>
-                                        <ul className="space-y-1.5">
-                                            {(selectedKeywordObj as any).serpAnalysis.contentGaps?.slice(0, 3).map((gap: string, i: number) => (
-                                                <li key={i} className="text-xs flex items-start gap-2 text-gray-700 dark:text-gray-300">
-                                                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0 mt-0.5" />
-                                                    <span>{gap}</span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-
-                                    {/* 2. Competitors */}
-                                    <div className="p-4">
-                                        <h4 className="font-semibold text-xs text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-2">
-                                            <Globe className="w-3.5 h-3.5" /> 상위 경쟁사
-                                        </h4>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {(selectedKeywordObj as any).serpAnalysis.topDomains?.slice(0, 5).map((domain: string, i: number) => (
-                                                <Badge key={i} variant="secondary" className="text-[10px] bg-gray-100 text-gray-600 hover:bg-gray-200 px-1.5 py-0 h-5">
-                                                    {domain}
-                                                </Badge>
-                                            ))}
+                    {/* Get serpAnalysis from suggestions[0] since that's where it's stored */}
+                    {(() => {
+                        const serpData = selectedKeywordObj?.suggestions?.[0]?.serpAnalysis;
+                        if (selectedKeywordObj && serpData) {
+                            return (
+                                <>
+                                    <div className="bg-indigo-50/50 dark:bg-indigo-900/20 p-4 border-b border-indigo-100 dark:border-zinc-800 flex justify-between items-center shrink-0">
+                                        <div className="flex items-center gap-2">
+                                            <Badge variant="outline" className="bg-indigo-100 text-indigo-700 border-indigo-200 text-[10px] h-5 px-1.5">
+                                                Live
+                                            </Badge>
+                                            <h3 className="font-bold text-sm text-indigo-950 dark:text-indigo-100 truncate max-w-[200px]">
+                                                경쟁 분석 리포트
+                                            </h3>
+                                        </div>
+                                        <div className="text-[10px] text-gray-400">
+                                            {serpData.source}
                                         </div>
                                     </div>
 
-                                    {/* 3. Patterns */}
-                                    <div className="p-4">
-                                        <h4 className="font-semibold text-xs text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-2">
-                                            <Lightbulb className="w-3.5 h-3.5" /> 제목 패턴
-                                        </h4>
-                                        <ul className="space-y-1.5">
-                                            {(selectedKeywordObj as any).serpAnalysis.headlinePatterns?.slice(0, 3).map((pattern: string, i: number) => (
-                                                <li key={i} className="text-xs flex items-start gap-2 text-gray-700 dark:text-gray-300">
-                                                    <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-                                                    <span>{pattern}</span>
-                                                </li>
-                                            ))}
-                                        </ul>
+                                    <div className="flex-1 overflow-y-auto p-0">
+                                        <div className="divide-y divide-gray-100 dark:divide-zinc-800">
+                                            {/* 1. Gaps */}
+                                            <div className="p-4">
+                                                <h4 className="font-semibold text-xs text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                                    <Target className="w-3.5 h-3.5" /> 공략 포인트 (Gaps)
+                                                </h4>
+                                                <ul className="space-y-1.5">
+                                                    {serpData.contentGaps?.slice(0, 3).map((gap: string, i: number) => (
+                                                        <li key={i} className="text-xs flex items-start gap-2 text-gray-700 dark:text-gray-300">
+                                                            <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0 mt-0.5" />
+                                                            <span>{gap}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+
+                                            {/* 2. Competitors */}
+                                            <div className="p-4">
+                                                <h4 className="font-semibold text-xs text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                                    <Globe className="w-3.5 h-3.5" /> 상위 경쟁사
+                                                </h4>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {serpData.topDomains?.slice(0, 5).map((domain: string, i: number) => (
+                                                        <Badge key={i} variant="secondary" className="text-[10px] bg-gray-100 text-gray-600 hover:bg-gray-200 px-1.5 py-0 h-5">
+                                                            {domain}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* 3. Patterns */}
+                                            <div className="p-4">
+                                                <h4 className="font-semibold text-xs text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                                    <Lightbulb className="w-3.5 h-3.5" /> 제목 패턴
+                                                </h4>
+                                                <ul className="space-y-1.5">
+                                                    {serpData.headlinePatterns?.slice(0, 3).map((pattern: string, i: number) => (
+                                                        <li key={i} className="text-xs flex items-start gap-2 text-gray-700 dark:text-gray-300">
+                                                            <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                                                            <span>{pattern}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        </div>
                                     </div>
+                                </>
+                            );
+                            return (
+                                <div className="h-24 flex items-center justify-center text-gray-400 bg-gray-50/30 rounded-lg">
+                                    <Target className="w-4 h-4 mr-2 text-gray-300" />
+                                    <span className="text-xs">키워드 선택 시 분석 데이터 표시</span>
                                 </div>
-                            </div>
-                        </>
-                    ) : (
-                        <div className="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50/10">
-                            <div className="bg-gray-50 p-3 rounded-full mb-3">
-                                <Target className="w-6 h-6 text-gray-300" />
-                            </div>
-                            <p className="text-sm font-medium text-gray-500">경쟁 분석 데이터 대기 중</p>
-                            <p className="text-xs text-gray-400 mt-1">좌측에서 주제를 선택하세요</p>
-                        </div>
-                    )}
+                            );
+                        }
+                    })()}
                 </Card>
             </div>
 

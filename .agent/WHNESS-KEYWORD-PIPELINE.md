@@ -23,22 +23,23 @@
 
 ### 핵심 원칙: Evergreen 3개 + Trending 2개 = 총 5개 시드
 
-**⚠️ 중요: 날짜/시간 기반 로테이션은 제거되었습니다.**
+**⚠️ 중요: 가중치 기반 선택 제거됨 (2026-01-07)**
 
 ### A. Evergreen Seeds (3개)
 
 **방식 1: 사용자 수동 선택 (Manual Mode)**
 - 사용자가 원하는 **카테고리**나 **특정 시드**를 직접 선택
 - UI: `SeedSelector` 컴포넌트 → 6개 대분류 카테고리 표시
-- 데이터 소스: `lib/research/defaultSeeds.ts` (약 100개 시드 풀)
+- 데이터 소스: `lib/research/defaultSeeds.ts` (84개 시드 풀)
 - 선택 개수: **정확히 3개**
 
-**방식 2: 자동 선택 (Auto Mode)**
-- 시스템이 가중치(Weight) 기반으로 **자동 선택**
+**방식 2: 자동 선택 (Auto Mode) - 카테고리 다양성 기반**
+- 시스템이 **6개 카테고리**에서 고르게 랜덤 선택
 - 선택 기준:
-  - High Weight (4+): 우선 선택
-  - Medium Weight (3): 그다음 선택
-  - 중복 제거 후 **정확히 3개** 확보
+  - 6개 카테고리 랜덤 셔플
+  - 각 카테고리에서 1개씩 랜덤 선택
+  - 상위 3개 = Evergreen Seeds
+- **가중치(Weight) 사용 안 함** - 84개 시드 전체가 동등한 확률
 
 ### B. Trending Seeds (2개) ✨
 
@@ -49,7 +50,7 @@
 
 **최종 시드 구성:**
 ```
-Evergreen Seeds (3개) + Trending Seeds (2개) = 총 5개 시드
+Evergreen Seeds (3개 - 카테고리 다양성) + Trending Seeds (2개) = 총 5개 시드
 ```
 
 ---
@@ -99,17 +100,25 @@ Phase 2에서 수집된 **연관검색어 + PAA**를 바탕으로, 다음 **6개
 | **CMS RSS** | RSS/Atom Parser | 최신 뉴스/블로그 | Public Feeds |
 | **Ads Keyword Planner** | Google Ads API | 검색량 + CPC 데이터 | 선택적 활성화 |
 
-#### 분석 기준 (7가지 지표)
+Failed to load resource: the server responded with a status of 500 (Internal Server Error)Understand this error
+intercept-console-error.ts:42 Error: GENERATION FAILED: Google GenAI API Failed: 404 - {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
 
-각 소스에서 수집한 키워드를 다음 기준으로 교차 분석합니다:
+    at handleStartWriting (semi-auto-blogger.tsx:238:23)Failed to load resource: the server responded with a status of 500 (Internal Server Error)Understand this error
+intercept-console-error.ts:42 Error: GENERATION FAILED: Google GenAI API Failed: 404 - {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
 
-1. **최신성 (Freshness)**: 게시일이 3개월 이내인가?
-2. **라이브 (Live)**: 현재 활발히 논의 중인가?
-3. **조회수 (Views)**: Reddit upvotes, Wikipedia page views 등
-4. **노출도 (Visibility)**: 여러 소스에서 반복 출현하는가?
-5. **댓글수 (Engagement)**: Reddit 댓글, Stack 답변 수
-6. **지속성 (Persistence)**: 일시적 유행인가, 지속적 관심사인가?
-7. **반복성 (Frequency)**: 여러 채널에서 동시에 언급되는가?
+    at handleStartWriting (semi-auto-blogger.tsx:238:23)
 
 #### 목적: 롱테일 황금 키워드 생성
 
@@ -178,15 +187,25 @@ Elite Keywords (상위 5개):
 
 ### 핵심 원칙: 검색 횟수 엄격 제한
 
-**⚠️ 글 하나당 SERP API 호출: 정확히 3회로 통일**
+**⚠️ 글 하나당 SERP API 호출: 총 3회 (분할 사용)**
 
-#### 검색 전략 (3회 고정)
+#### 검색 전략 (3회 분할)
 
+**Phase 3.5: 황금 키워드 검증 (1-2회)**
 | 회차 | 목적 | 내용 |
 |------|------|------|
-| **1회차** | 통합 검색 | 주제 핵심 키워드 + 최신 트렌드 + 글 구조 개요 |
-| **2회차** | 데이터 및 통계 | 수치, 통계, 공신력 있는 기관 발표 자료 |
-| **3회차** | 심층 조사 | 실제 사례(Case Study), 세부 디테일, 최신 뉴스 |
+| **1회차** | 틈새 검증 | 상위 1-10위 경쟁사 분석, 콘텐츠 갭 발견 |
+| **2회차 (선택)** | 백업 검증 | 첫 번째 키워드에 틈새 없으면 2순위 검증 |
+
+**Phase 4-5: 콘텐츠 연구 (1-2회)**
+| 회차 | 목적 | 내용 |
+|------|------|------|
+| **나머지** | 데이터 수집 | 통계, 사례(Case Study), 디테일 |
+
+**분배 원칙:**
+- Phase 3.5에서 1회 사용 → Phase 4-5에서 2회 사용
+- Phase 3.5에서 2회 사용 → Phase 4-5에서 1회 사용
+- 총합: **항상 3회**
 
 **효율 계산:**
 - 글당 3회 검색
@@ -292,73 +311,51 @@ async function getSerpData(keyword: string) {
 
 ---
 
-## Phase 4. 현장 정밀 조사 (Deep SERP Analysis)
+## Phase 3.5 황금 키워드 검증 (Smart Loop Validation) ✨
 
-살아남은 **Elite Keywords (3~5개)**에 대해 **실제 구글 1~10위 블로그**를 정밀 조사합니다.
+상위 3개 후보(Elite Keywords) 중 **진짜 틈새(Gaps)**가 있는 키워드를 찾기 위해 SERP를 빠르게 스캔합니다.
 
-### API 헌법 (3원칙)
-
-#### 제1원칙: 월간 리셋 활용
-- 먼저 **SerpApi**를 호출하여 데이터를 요청합니다. (무료 크레딧 우선 소진)
-
-#### 제2원칙: 비상금 활용
-- 만약 SerpApi가 **한도 초과**로 실패하면, 즉시 **Serper.dev** 키(2,500회)를 꺼내 조사를 수행합니다.
-
-#### 제3원칙: 무중단
-- 둘 다 실패해도 **멈추지 않고**, 자체 **휴리스틱 알고리즘**으로 분석을 완수합니다.
-
-### SERP 분석 항목 (6가지)
-
-#### ① 제목 구조 분석
-```
-1위: "Medicare Part B Premium 2025: Complete Guide"
-2위: "How Much Does Medicare Part B Cost in 2025?"
-
-분석 결과:
-- 공통 패턴: "2025", "Cost/Premium", "Guide" 포함
-- 제목 길이: 평균 55~60자
+### Smart Loop 알고리즘
+```typescript
+// 최대 2회까지 시도하여 "틈새"가 있는 키워드를 찾음
+For i = 1 to 3:
+  1. 키워드 SERP 분석 (API 호출)
+  2. 콘텐츠 갭(Content Gaps) 확인
+  3. 갭 > 0 이면? -> ✅ WINNER Found (작업 중단, 해당 키워드 선택)
+  4. 갭 = 0 이면? -> ❌ Next Candidate (다음 후보 검증)
+  
+  * 단, API 호출은 최대 2회까지만 허용
 ```
 
-#### ② 놓친 콘텐츠 (Content Gaps)
-```
-상위 1~10위 블로그에서 발견된 빈틈:
-✗ 실제 비용 표(Table)가 없음 (8개 블로그)
-✗ 영상(Video) 없음 (10개 블로그)
-✗ 개인 경험담/사례 없음 (7개 블로그)
-```
+### 목적
+- **헛수고 방지**: 경쟁이 너무 치열한 키워드는 자동으로 거름
+- **기회 확보**: 1순위가 아니더라도 틈새가 있는 2순위 키워드를 찾아냄
 
-#### ③ 틈새시장 (Niche Opportunity)
-```
-발견된 틈새:
-- "플로리다 거주 프리랜서를 위한 Part B 가이드" → 없음
-- "Part B 보험료를 줄이는 7가지 방법" → 1개만 존재
-```
+---
 
-#### ④ 기회 요인 (Opportunity Factors)
-```
-1. Featured Snippet 자리가 비어있음
-2. 상위 블로그 평균 단어수: 1,200단어 → 우리는 2,200단어로 압도
-3. 평균 게시일: 2023년 → 최신성(2025)으로 앞설 수 있음
-```
+## Phase 4. 콘텐츠 연구 (Content Research & Gap Analysis)
 
-#### ⑤ 최상위 경쟁 가능성
-```
-- 4~10위 도메인: DA 30~50 (낮음~중간)
-- ✅ 여기를 노리면 충분히 가능
-- 최상위 진입 확률: 4~10위권 85%, 1~3위 20%
-```
+선택된 **최종 1개 키워드**에 대해 깊이 있는 조사를 수행합니다.
 
-#### ⑥ 차별화 전략
-```
-1. 콘텐츠 깊이: 2,200단어 (+83%)
-2. 구조화: 비용 비교표 + FAQ + 체크리스트
-3. 최신성: "2025년 최신 데이터" 강조
-4. 경험: "100건의 EOB 분석 결과"
-5. 앵글: "실패 경험담" 또는 "플로리다 프리랜서 관점"
-```
+### 1. 경쟁사 분석 (Snippet Mining)
+제목뿐만 아니라 **검색 결과 설명(Snippet)**까지 텍스트마이닝하여 6가지 틈새를 찾습니다:
+
+1. **비용(Cost)**: 구체적 금액($)이나 가격표가 없는가?
+2. **경험(Experience)**: "내가 직접 해본" 후기가 없는가?
+3. **영상(Video)**: 설명 영상이 부재한가?
+4. **도구(Tools)**: 계산기나 시뮬레이션 도구가 없는가?
+5. **표(Table)**: 비교표나 데이터 테이블이 없는가?
+6. **자료(Assets)**: PDF 체크리스트나 다운로드 자료가 없는가?
+
+**→ 발견된 '빈틈'은 Phase 5 프롬프트에 "MUST FILL" 항목으로 전달됩니다.**
+
+### 2. 데이터 수집
+- 관련 통계, 최신 뉴스, 공신력 있는 기관의 발표 자료 수집
+- 실제 글 작성 시 "Fact"로 활용
 
 **코드 위치:**
-- `lib/serp/analyzer.ts` → `analyzeSERP()` 함수
+- `app/api/keywords/generate/route.ts` (Phase 3.5)
+- `lib/serp/analyzer.ts` (Phase 4 Logic)
 
 ---
 

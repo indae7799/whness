@@ -23,10 +23,25 @@ Every article must include real money, real time, real locations, and real mista
 2. **HTML CONTENT** (The blog post itself)
 
 ## META DATA BLOCK FORMAT
+
+**⚠️ CRITICAL: Output as PLAIN TEXT, NOT HTML <meta> tags!**
+
 \`\`\`text
 META TITLE: [50-60 chars: Focus Keyword + concrete benefit]
 META DESCRIPTION: [120-160 chars: Focus Keyword + problem + outcome + CTA]
 FOCUS KEYWORD: [exact phrase]
+\`\`\`
+
+**❌ WRONG (Do NOT do this):**
+\`\`\`html
+<meta name="title" content="...">  <!-- NO! -->
+\`\`\`
+
+**✅ CORRECT (Do this):**
+\`\`\`text
+META TITLE: Medicare Advantage Open Enrollment Period: Complete 2026 Guide
+META DESCRIPTION: Learn how to navigate the Medicare Advantage Open Enrollment Period with real cost breakdowns and step-by-step guidance.
+FOCUS KEYWORD: Medicare Advantage Open Enrollment Period
 \`\`\`
 
 ## OUTPUT FORMAT
@@ -41,9 +56,13 @@ FOCUS KEYWORD: [exact phrase]
 ## FOCUS KEYWORD RULES (Exact Match)
 - **H1**: exactly once
 - **First 100 words**: once
-- **H2**: at least 3 headings must contain the exact or near-exact phrase
-- **Body density**: 1.4–1.8%
-- **Conclusion**: once
+- **H2**: at least 4 headings must contain the exact keyword (or a very close variation)
+- **Body Density**: **STRICTLY 1.4% - 1.8%**.
+  - Calculation: For a 2,500-word article, you MUST use the focus keyword **35 to 45 times**.
+  - Execution: Distribute it evenly. Do not cluster. Repeat it naturally in every single section.
+- **Bold Emphasis**: Bold the exact focus keyword 2-3 times in key sections.
+- **Variation**: Use LSI/Synonyms frequently (e.g., if "health insurance" -> "medical coverage", "policy benefits").
+- **Conclusion**: must include exact keyword in the first sentence of the conclusion
 
 ---
 
@@ -90,9 +109,9 @@ SEO Requirements:
 ---
 
 ## WORD COUNT & SECTION RULES
-- **Minimum**: 2,200 words
-- **Optimal**: 2,200–2,500 words
-- **Section Rule**: Minimum 5 sections, each at least 400 words
+- **Minimum**: 2,000 words
+- **Optimal**: 2,000–2,500 words
+- **Section Rule**: Minimum 3 sections naturally, each at least 300 words. Expand sections organically based on topic depth.
 
 ---
 
@@ -170,16 +189,29 @@ SEO Requirements:
 ---
 
 ## LINK RULES
-- **External Links**: Exactly 2-3 links to authority sites (.gov, .edu)
-  - Examples: Medicare.gov, SSA.gov, IRS.gov
-  - Format: <a href="https://www.medicare.gov/" target="_blank">Medicare.gov</a>
-- **Internal Links**: 2-3 natural mentions within content
-- **NO "Related Reading" section**: Do NOT generate this. User will add manually.
+
+**⚠️ CRITICAL: You MUST include actual clickable links, not just mentions!**
+
+**External Links (REQUIRED - Include 2-3):**
+- Link to authority sites: .gov, .edu
+- **You MUST use actual <a href> tags like this:**
+
+\`\`\`html
+<a href="https://www.medicare.gov/" target="_blank" style="color: #2563eb; text-decoration: underline; font-weight: 600;">Medicare.gov</a>
+<a href="https://www.ssa.gov/" target="_blank" style="color: #2563eb; text-decoration: underline; font-weight: 600;">SSA.gov</a>
+<a href="https://www.irs.gov/" target="_blank" style="color: #2563eb; text-decoration: underline; font-weight: 600;">IRS.gov</a>
+\`\`\`
+
+**❌ WRONG:** "Visit Medicare.gov for more information." (no actual link)
+**✅ CORRECT:** "Visit <a href="https://www.medicare.gov/">Medicare.gov</a> for more information."
+
+**Internal Links**: 2-3 natural mentions within content
+**NO "Related Reading" section**: Do NOT generate this. User will add manually.
 
 ---
 
 ## FAQ SECTION (Featured Snippet Target)
-- **Count**: Exactly 5-6 questions
+- **Count**: Maximum 5 questions (use 4-5 naturally)
 - **Format**: Question → Concise answer (50-100 words)
 - **Question Types**: How, What, Can I, Why, When, Do I need
 
@@ -246,8 +278,8 @@ If any rule above is not met, the content is considered a FAILURE. Revise before
 - [ ] Keyword density 1.4-1.8%?
 - [ ] 2-3 external links to .gov/.edu?
 - [ ] At least one comparison table?
-- [ ] 5-6 FAQs?
-- [ ] 2,200+ words with 5+ sections (400 words each)?
+- [ ] 4-5 FAQs (max 5)?
+- [ ] 2,000+ words with 3+ sections (300 words each)?
 - [ ] Snippet bait (40-60 word definitions) after each H2?
 - [ ] American names only (no Kim, Park, Lee)?
 - [ ] Documentary-style image placeholder after intro?

@@ -22,14 +22,14 @@ export function ModelQuotaDashboard() {
     useEffect(() => {
         // Sync with local storage or fetch from API
         const loadQuotas = () => {
-            const saved = localStorage.getItem('gemini_quotas')
+            const saved = localStorage.getItem('gemini_quotas_v2')
             if (saved) {
                 setQuotas(JSON.parse(saved))
             } else {
                 const initial = [
                     {
-                        modelId: 'google/gemini-3.0-flash:free',
-                        name: 'Gemini 3.0 Flash',
+                        modelId: 'google/gemini-3-flash-preview:free',
+                        name: 'Gemini 3 Flash Preview',
                         rpdUsed: 12,
                         rpdTotal: 1500,
                         tpmUsed: 45000,
@@ -37,8 +37,8 @@ export function ModelQuotaDashboard() {
                         resetTime: '09:00 AM (KST)'
                     },
                     {
-                        modelId: 'google/gemini-2.5-flash:free',
-                        name: 'Gemini 2.5 Flash',
+                        modelId: 'google/gemini-2.0-flash-exp:free',
+                        name: 'Gemini 2.0 Flash Exp',
                         rpdUsed: 5,
                         rpdTotal: 1500,
                         tpmUsed: 12000,
@@ -47,7 +47,7 @@ export function ModelQuotaDashboard() {
                     }
                 ]
                 setQuotas(initial)
-                localStorage.setItem('gemini_quotas', JSON.stringify(initial))
+                localStorage.setItem('gemini_quotas_v2', JSON.stringify(initial))
             }
         }
         loadQuotas()

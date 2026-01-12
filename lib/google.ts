@@ -1,8 +1,8 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai"
 
-// Default Model: Gemini 3.0 Flash (Latest & High Quality)
-const DEFAULT_MODEL = "gemini-3.0-flash"
+// Default Model: Gemini 3 Flash Preview (Confirmed via Screenshot)
+const DEFAULT_MODEL = "gemini-3-flash-preview"
 
 export async function callGoogleGenAI(
     systemPrompt: string,
@@ -30,9 +30,9 @@ export async function callGoogleGenAI(
             generationConfig: { temperature, maxOutputTokens }
         };
 
-        // Add Timeout (50 seconds) to prevent infinite hanging
+        // Add Timeout (120 seconds) to prevent infinite hanging and support slow models
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 50000); // 50s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout
 
         let response;
         try {

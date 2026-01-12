@@ -179,7 +179,9 @@ export async function analyzeSERP(keyword: string): Promise<SerpAnalysisResult> 
     // ============================================
     const { results, source } = rawData;
     const titles: string[] = results.map((r: any) => r.title || "");
+    const snippets: string[] = results.map((r: any) => r.snippet || "");
     const links: string[] = results.map((r: any) => r.link || "");
+    const allText = [...titles, ...snippets].join(" ").toLowerCase();
 
     const patterns: string[] = [];
     const gaps: string[] = [];
@@ -188,36 +190,53 @@ export async function analyzeSERP(keyword: string): Promise<SerpAnalysisResult> 
 
     // A. Headline Patterns
     const yearsFound = titles.filter(t => t.includes(String(currentYear)) || t.includes(String(currentYear + 1))).length;
-    if (yearsFound > 3) patterns.push(`Year-specific titles (${currentYear})`);
+    if (yearsFound > 3) patterns.push(`${currentYear}년 최신 정보 강조`);
 
     const listicles = titles.filter(t => /^\d+|Top \d+|Best \d+/i.test(t)).length;
-    if (listicles > 2) patterns.push("Listicle / Numbered format");
+    if (listicles > 2) patterns.push("리스트형/숫자 제목 (예: Top 10)");
 
     const guides = titles.filter(t => /Guide|How to|Tutorial/i.test(t)).length;
-    if (guides > 3) patterns.push("Comprehensive Guides");
+    if (guides > 3) patterns.push("가이드/튜토리얼 형식");
 
-    // B. Content Gaps
-    if (!titles.some(t => /cost|price|fee|premium/i.test(t)) && !lowerKeyword.includes("free")) {
-        gaps.push("Transparent Cost/Price Analysis");
-    }
-    if (!titles.some(t => /video|watch|youtube/i.test(t))) {
-        gaps.push("Video Walkthrough / Explainer");
-    }
-    if (!titles.some(t => /calculator|tool|estimator/i.test(t)) && /insurance|tax|loan/i.test(keyword)) {
-        gaps.push("Interactive Calculator");
+    // B. Content Gaps (Enhanced with Snippet Analysis)
+    // 1. Cost/Price Analysis
+    const hasCostInfo = /cost|price|fee|premium|rates|\$|\d+(k|m)/i.test(allText);
+    if (!hasCostInfo && !lowerKeyword.includes("free") && !lowerKeyword.includes("login")) {
+        gaps.push("실질적인 비용/가격 분석(구체적 수치) 및 표(Table) 부족");
     }
 
-    // [New] SGE Optimization: Check for Tables
-    const hasTable = titles.some(t => /table|chart|comparison|vs/i.test(t)) ||
-        results.some((r: any) => r.snippet?.toLowerCase().includes("table"));
+    // 2. Personal Experience (E-E-A-T)
+    const hasExperience = /i tried|my experience|we tested|review|case study|mistakes/i.test(allText);
+    if (!hasExperience) {
+        gaps.push("직접 겪은 경험담이나 솔직한 테스트 후기 부족");
+    }
+
+    // 3. Visuals / Video
+    if (!/video|watch|youtube|infographic|diagram/i.test(allText)) {
+        gaps.push("설명을 돕는 시각 자료(영상/인포그래픽) 부재");
+    }
+
+    // 4. Tools / Calculators
+    if (!/calculator|tool|estimator/i.test(allText) && /insurance|tax|loan|payment|mortgage/i.test(keyword)) {
+        gaps.push("예상 비용 계산기나 견적 시뮬레이션 도구 부재");
+    }
+
+    // 5. [New] SGE Optimization: Check for Tables
+    // Check if "table" is mentioned or structurally implied
+    const hasTable = /table|chart|comparison|vs|breakdown/i.test(allText);
 
     if (!hasTable) {
-        gaps.push("Comparison Table (Crucial for SGE)");
+        gaps.push("한눈에 보는 비교 분석 표(Table)가 없음 (SGE 필수)");
+    }
+
+    // 6. Downloadable Assets
+    if (!/pdf|checklist|template|download/i.test(allText) && /guide|how to|process/i.test(keyword)) {
+        gaps.push("다운로드 가능한 PDF 체크리스트나 요약 자료 없음");
     }
 
     if (gaps.length === 0) {
-        gaps.push("Personal User Experience (Reddit-style)");
-        gaps.push("More recent/updated information");
+        gaps.push("최신 정보(2025/2026) 업데이트 부족");
+        gaps.push("초보자도 이해하기 쉬운 설명 부족");
     }
 
     // C. Top Domains

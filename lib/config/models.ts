@@ -33,8 +33,8 @@ export const TEXT_MODELS: TextModel[] = [
         description: 'Free - Fast & High Efficiency (2026)'
     },
     {
-        id: 'google/gemini-3.0-flash:free',
-        name: 'Gemini 3.0 Flash (Free)',
+        id: 'google/gemini-3-flash-preview:free',
+        name: 'Gemini 3 Flash Preview (Free)',
         provider: 'openrouter',
         inputCost: 0,
         outputCost: 0,
@@ -158,7 +158,7 @@ export const IMAGE_MODELS: ImageModel[] = [
 ]
 
 // Get default free models
-export const DEFAULT_TEXT_MODEL = TEXT_MODELS.find(m => m.id === 'google/gemini-3.0-flash:free') || TEXT_MODELS[0]
+export const DEFAULT_TEXT_MODEL = TEXT_MODELS.find(m => m.id === 'google/gemini-3-flash-preview:free') || TEXT_MODELS[0]
 export const DEFAULT_IMAGE_MODEL = IMAGE_MODELS[0] // Pollinations.ai
 
 // Helper functions

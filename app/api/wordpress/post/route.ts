@@ -221,19 +221,28 @@ export async function POST(req: Request) {
         // USER REQUIREMENT: Focus Keyword MUST be the Post Title
         // (finalFocusKeyword already defined above)
 
+        // Extract Slug if available
+        let finalSlug = "";
+        const slugMatch = htmlContent.match(/URL SLUG:\s*([^\n]+)/i);
+        if (slugMatch) {
+            finalSlug = slugMatch[1].trim();
+        }
+
         const postData = {
             title: postTitle,
             content: htmlContent,
             status: 'publish',
+            slug: finalSlug || undefined, // Use extracted slug if available
             featured_media: featuredMediaId || 0,
             categories: categoryIds,
             template: 'elementor_canvas',
             meta: {
-                // Rank Math SEO Fields
+                // Rank Math SEO Fields (Try both Public and Protected keys)
                 rank_math_focus_keyword: finalFocusKeyword,
+                _rank_math_focus_keyword: finalFocusKeyword, // Added back for compatibility
                 rank_math_description: metaDesc || `Learn about ${postTitle}`,
                 rank_math_title: metaTitle || postTitle,
-                _rank_math_focus_keyword: finalFocusKeyword, // Backup/Internal
+                rank_math_robots: ["index", "follow"], // Ensure indexing
             }
         };
 
@@ -271,7 +280,6 @@ export async function POST(req: Request) {
                 body: JSON.stringify({
                     meta: {
                         rank_math_focus_keyword: finalFocusKeyword,
-                        _rank_math_focus_keyword: finalFocusKeyword,
                         rank_math_description: metaDesc || `Learn about ${postTitle}`,
                         rank_math_title: metaTitle || postTitle,
                     }
