@@ -1,9 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import { buildMasterPrompt } from "@/lib/generation/prompt-builder"
+import { buildSeparatedPrompts } from "@/lib/generation/prompt-builder"
 import { getTextModelById, DEFAULT_TEXT_MODEL } from "@/lib/config/models"
 import { callGoogleGenAI } from "@/lib/google"
 import { callOpenRouter } from "@/lib/openrouter"
+import { analyzeSERP } from "@/lib/serp/analyzer"
+import { generateAIStrategy } from "@/services/ai-strategy"
 
 interface ChainedGenerationParams {
     topic: string
@@ -13,55 +15,89 @@ interface ChainedGenerationParams {
     contentModelId?: string
     temperature?: number
     maxOutputTokens?: number
+    // Phase 3.5 data passed from keyword generation
+    serpAnalysisFromPhase3?: any
+    peopleAlsoAsk?: string[]
 }
 
 export async function generateChainedArticle({
     topic,
     focusKeyword,
     persona,
-    outlineModelId = 'gemini-3.0-flash', // Default to Gemini 3.0 Flash
-    contentModelId = 'gemini-3.0-flash', // Default to Gemini 3.0 Flash
+    outlineModelId = 'gemini-3.0-flash',
+    contentModelId = 'gemini-3.0-flash',
     temperature = 0.7,
-    maxOutputTokens = 16384 // Increased to prevent truncation
+    maxOutputTokens = 16384,
+    serpAnalysisFromPhase3,
+    peopleAlsoAsk = []
 }: ChainedGenerationParams) {
     console.log(`[ChainedGen] Starting... Topic: ${topic}`)
 
-    // LOAD PROMPT FROM FILE (Parsed for Core Prompt Only)
+    // LOAD PROMPT FROM FILE (PRIMARY: PROMPT-v3.1-FINAL.md, SECONDARY: 프롬프트고정.md)
     let systemInstruction = "";
+    const PRIMARY_PATH = path.join(process.cwd(), 'PROMPT-v3.1-FINAL.md');
+    const SECONDARY_PATH = path.join(process.cwd(), '프롬프트고정.md');
+
+    let promptFilePath = "";
+    if (fs.existsSync(PRIMARY_PATH)) {
+        promptFilePath = PRIMARY_PATH;
+    } else if (fs.existsSync(SECONDARY_PATH)) {
+        promptFilePath = SECONDARY_PATH;
+        console.warn(`[ChainedGen] WARNING: Using fallback prompt file: 프롬프트고정.md`);
+    } else {
+        throw new Error(`[CRITICAL] No prompt file found! Required: PROMPT-v3.1-FINAL.md or 프롬프트고정.md`);
+    }
+
     try {
-        const primaryPath = path.join(process.cwd(), 'PROMPT-v3.1-FINAL.md'); // USER: This is the FINAL one
-        const secondaryPath = path.join(process.cwd(), '프롬프트고정.md');
-        const fallbackPath = path.join(process.cwd(), 'blog-prompt.md');
-        let rawFileContent = "";
+        const rawFileContent = fs.readFileSync(promptFilePath, 'utf-8');
+        console.log(`[ChainedGen] Loading System Prompt from: ${promptFilePath}`);
 
-        if (fs.existsSync(primaryPath)) {
-            rawFileContent = fs.readFileSync(primaryPath, 'utf-8');
-            console.log(`[ChainedGen] Parsing System Prompt from: ${primaryPath}`);
-        } else if (fs.existsSync(secondaryPath)) {
-            rawFileContent = fs.readFileSync(secondaryPath, 'utf-8');
-            console.log(`[ChainedGen] Parsing Secondary Prompt from: ${secondaryPath}`);
-        } else if (fs.existsSync(fallbackPath)) {
-            rawFileContent = fs.readFileSync(fallbackPath, 'utf-8');
-            console.log(`[ChainedGen] Parsing Fallback Prompt from: ${fallbackPath}`);
-        }
-
-        // Extract SYSTEM PROMPT
-        // 1. Try to find the code block inside "## 4. SYSTEM PROMPTS" (for v2.x legacy format)
         const systemPromptMatch = rawFileContent.match(/##\s*4\.\s*SYSTEM\s*PROMPTS[\s\S]*?(```markdown[\s\S]*?```)/i);
-
         if (systemPromptMatch && systemPromptMatch[1]) {
-            // Extract the content inside the first code block under Section 4
             systemInstruction = systemPromptMatch[1].replace(/```markdown|```/g, "").trim();
-            console.log(`[ChainedGen] Extracted Core System Prompt from Block (${systemInstruction.length} chars)`);
         } else {
-            // 2. FOR v3.1 FINAL: Use the ENTIRE file content
-            // The v3.1 file IS the system prompt itself, not just a section.
-            console.log("[ChainedGen] Using FULL file content as System Prompt (v3.x Standard)");
             systemInstruction = rawFileContent;
         }
-
     } catch (e) {
-        console.error("[ChainedGen] Failed to load prompt file:", e);
+        console.error("[ChainedGen] Failed to load PROMPT-v3.1-FINAL.md:", e);
+        throw e;
+    }
+
+    // ========== PHASE 4: SERP DEEP DIVE (1-2 calls) ==========
+    // Only call SERP if not already done in Phase 3.5
+    let serpAnalysis = serpAnalysisFromPhase3;
+    let contentGaps: string[] = [];
+    let differentiationStrategy: any = null;
+
+    if (!serpAnalysis) {
+        console.log(`[ChainedGen] Phase 4: Running SERP analysis for "${focusKeyword}"...`);
+        try {
+            serpAnalysis = await analyzeSERP(focusKeyword);
+            console.log(`[ChainedGen] SERP analysis completed. Gaps found: ${serpAnalysis?.contentGaps?.length || 0}`);
+        } catch (e) {
+            console.error("[ChainedGen] SERP analysis failed:", e);
+        }
+    } else {
+        console.log(`[ChainedGen] Using SERP analysis from Phase 3.5`);
+    }
+
+    // Extract content gaps from SERP analysis
+    if (serpAnalysis?.contentGaps) {
+        contentGaps = serpAnalysis.contentGaps;
+    }
+
+    // ========== PHASE 5.1: AI STRATEGY GENERATION ==========
+    console.log(`[ChainedGen] Phase 5.1: Generating differentiation strategy...`);
+    try {
+        differentiationStrategy = await generateAIStrategy(
+            focusKeyword,
+            serpAnalysis,
+            peopleAlsoAsk,
+            [topic]
+        );
+        console.log(`[ChainedGen] Strategy generated. Angle: ${differentiationStrategy?.angle || 'N/A'}`);
+    } catch (e) {
+        console.error("[ChainedGen] Strategy generation failed, using defaults:", e);
     }
 
     // STEP 1: Generate Outline with Model A
@@ -69,6 +105,8 @@ export async function generateChainedArticle({
       You are a Senior SEO Content Strategist. 
       Generate a detailed blog post outline for the topic: "${topic}"
       Focus Keyword: "${focusKeyword}"
+      
+      ${contentGaps.length > 0 ? `Content Gaps to Address: ${contentGaps.slice(0, 3).join(", ")}` : ""}
       
       The outline must include:
       - A catchy H1 title
@@ -82,31 +120,31 @@ export async function generateChainedArticle({
     console.log(`[ChainedGen] Generating outline with ${outlineModelId}...`)
     const rawOutline = await callModel(outlineModelId, outlinePrompt, "", temperature, 2000)
 
-    // Parse Outline into a list for Strategy Structure
     const structureList = rawOutline.split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 5 && (line.startsWith('-') || line.startsWith('*') || line.match(/^\d+\./) || line.startsWith('#')));
 
-    // STEP 2: Generate Full Content with Model B using PROMPT BUILDER (Phase 5.2)
-    const masterPrompt = await buildMasterPrompt({
+    // ========== PHASE 5.2: BUILD PROMPT WITH REAL STRATEGY ==========
+    const { systemPrompt, userPrompt } = await buildSeparatedPrompts({
         topic: topic,
         focusKeyword: focusKeyword,
         persona: persona,
         strategy: {
-            angle: "Data-Driven Guide with First-Hand Experience",
-            target_audience: "General Audience seeking actionable advice",
+            angle: differentiationStrategy?.angle || "Data-Driven Guide with First-Hand Experience",
+            target_audience: differentiationStrategy?.targetAudience || "General Audience seeking actionable advice",
             structure: structureList.length > 0 ? structureList : ["Introduction", "Main Analysis", "Cost Breakdown", "Conclusion"],
-            mustInclude: ["Real Cost Numbers ($)", "Comparison Table", "Personal Experience/Mistakes", "Step-by-Step Walkthrough"],
-            experienceStatements: ["Based on my recent experience...", "I analyzing the data explicitly...", "When I tried this myself..."]
+            mustInclude: differentiationStrategy?.mustInclude || ["Real Cost Numbers ($)", "Comparison Table", "Personal Experience/Mistakes", "Step-by-Step Walkthrough"],
+            experienceStatements: differentiationStrategy?.experienceStatements || ["Based on my recent experience...", "I analyzing the data explicitly...", "When I tried this myself..."]
         },
-        contentGaps: []
-    }, systemInstruction) // Pass the dynamic prompt file content here
+        contentGaps: contentGaps  // REAL content gaps from SERP analysis!
+    }, systemInstruction)
 
     console.log(`[ChainedGen] Generating full content with ${contentModelId}...`)
+    console.log(`[ChainedGen] Content Gaps being used: ${contentGaps.length > 0 ? contentGaps.join(", ") : "None"}`)
+    console.log(`[ChainedGen] System Prompt Length: ${systemPrompt.length} chars`)
+    console.log(`[ChainedGen] User Prompt Length: ${userPrompt.length} chars`)
 
-    // Pass the FULLY ASSEMBLED prompt (User + System) as a single prompt block
-    // We pass "" as systemPrompt because masterPrompt already contains the System Prompt block.
-    const fullContent = await callModel(contentModelId, masterPrompt, "", temperature, maxOutputTokens)
+    const fullContent = await callModel(contentModelId, userPrompt, systemPrompt, temperature, maxOutputTokens)
 
     // STEP 3: Parse and Return
     return parseGeneratedContent(fullContent, focusKeyword)
@@ -131,30 +169,24 @@ async function callModel(modelId: string, userPrompt: string, systemPrompt: stri
         } catch (err: any) {
             console.error(`[ChainedGen] Google API Failed for ${nativeId}:`, err.message)
 
-            // FALLBACK CHAIN: 3.0 → 2.5 → 2.0
-            // If primary failed, try 2.5 Flash first
-            if (nativeId !== 'gemini-2.5-flash') {
-                console.warn(`[ChainedGen] Primary Model failed. Fallback to Gemini 2.5 Flash...`);
+            // FALLBACK Logic
+            // Level 1: Try stable 1.5 Flash (001)
+            console.warn(`[ChainedGen] Primary Model (${nativeId}) failed. Attempting Fallback 1: 'gemini-1.5-flash-001'...`);
+
+            try {
+                return await callGoogleGenAI(systemPrompt, userPrompt, 'gemini-1.5-flash-001', temp, maxTokens);
+            } catch (fallbackErr1: any) {
+                console.error(`[ChainedGen] Fallback 1 failed:`, fallbackErr1.message);
+
+                // Level 2: Try stable 1.5 Pro (001) - Last Resort
+                console.warn(`[ChainedGen] Attempting Fallback 2: 'gemini-1.5-pro-001' (High Stable)...`);
                 try {
-                    return await callGoogleGenAI(systemPrompt, userPrompt, 'gemini-2.5-flash', temp, maxTokens);
-                } catch (err2) {
-                    console.error(`[ChainedGen] Fallback (2.5 Flash) failed:`, err2);
+                    return await callGoogleGenAI(systemPrompt, userPrompt, 'gemini-1.5-pro-001', temp, maxTokens);
+                } catch (fallbackErr2: any) {
+                    console.error(`[ChainedGen] ALL Fallbacks failed.`, fallbackErr2.message);
+                    throw err; // Throw ORIGINAL error
                 }
             }
-
-            // Second Fallback: 2.0 Flash Exp
-            if (nativeId !== 'gemini-2.0-flash-exp') {
-                console.warn(`[ChainedGen] Fallback to Gemini 2.0 Flash Exp...`);
-                try {
-                    return await callGoogleGenAI(systemPrompt, userPrompt, 'gemini-2.0-flash-exp', temp, maxTokens);
-                } catch (err3) {
-                    console.error(`[ChainedGen] Fallback (2.0 Flash Exp) failed:`, err3);
-                }
-            }
-
-            // Final Fallback: 1.5 Flash (very stable)
-            console.warn(`[ChainedGen] Final Fallback to Gemini 1.5 Flash...`);
-            return await callGoogleGenAI(systemPrompt, userPrompt, 'gemini-1.5-flash', temp, maxTokens);
         }
     } else {
         // Non-Google models (or other providers) will use OpenRouter

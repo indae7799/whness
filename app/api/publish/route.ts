@@ -57,6 +57,94 @@ async function uploadFeaturedImage(
     return mediaData.id
 }
 
+// Fetch recent posts for "Related Articles" section
+interface RelatedPost {
+    id: number
+    title: string
+    link: string
+    featuredImageUrl: string | null
+}
+
+async function fetchRelatedPosts(
+    baseUrl: string,
+    auth: string,
+    excludeTitle?: string,
+    count: number = 3
+): Promise<RelatedPost[]> {
+    try {
+        // Fetch recent posts with embedded featured media
+        const response = await fetch(
+            `${baseUrl}/wp-json/wp/v2/posts?per_page=${count + 2}&status=publish&_embed=wp:featuredmedia`,
+            {
+                headers: { Authorization: auth },
+            }
+        )
+
+        if (!response.ok) {
+            console.error("Failed to fetch related posts")
+            return []
+        }
+
+        const posts = await response.json()
+
+        const relatedPosts: RelatedPost[] = posts
+            .filter((post: any) => post.title?.rendered !== excludeTitle)
+            .slice(0, count)
+            .map((post: any) => {
+                // Get featured image URL from embedded data
+                let featuredImageUrl: string | null = null
+                if (post._embedded?.["wp:featuredmedia"]?.[0]?.source_url) {
+                    featuredImageUrl = post._embedded["wp:featuredmedia"][0].source_url
+                }
+                return {
+                    id: post.id,
+                    title: post.title?.rendered || "Untitled",
+                    link: post.link,
+                    featuredImageUrl,
+                }
+            })
+
+        return relatedPosts
+    } catch (error) {
+        console.error("Error fetching related posts:", error)
+        return []
+    }
+}
+
+// Generate HTML for Related Articles section
+function generateRelatedPostsHTML(posts: RelatedPost[]): string {
+    if (posts.length === 0) return ""
+
+    const cardsHtml = posts
+        .map(
+            (post) => `
+        <a href="${post.link}" style="text-decoration: none; color: inherit; display: block;">
+            <div style="background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s;">
+                ${post.featuredImageUrl
+                    ? `<img src="${post.featuredImageUrl}" alt="${post.title}" style="width: 100%; height: 160px; object-fit: cover;" />`
+                    : `<div style="width: 100%; height: 160px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>`
+                }
+                <div style="padding: 16px;">
+                    <h4 style="font-family: Georgia, serif; font-size: 16px; font-weight: 600; color: #1a202c; margin: 0; line-height: 1.4;">${post.title}</h4>
+                </div>
+            </div>
+        </a>`
+        )
+        .join("\n")
+
+    return `
+<!-- Related Articles Section -->
+<div style="margin-top: 64px; padding-top: 48px; border-top: 1px solid #e5e7eb;">
+    <h2 style="font-family: Georgia, serif; font-size: 28px; font-weight: 700; color: #111827; margin-bottom: 32px; text-align: center;">You Might Also Like</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px;">
+        ${cardsHtml}
+    </div>
+</div>
+<!-- End Related Articles -->
+`
+}
+
+
 export async function POST(req: Request) {
     try {
         const body = await req.json()
@@ -100,6 +188,18 @@ export async function POST(req: Request) {
             } else {
                 finalContent = `![Featured Image](${featuredImageUrl})\n\n` + content
             }
+        }
+
+        // Fetch and append Related Articles section
+        try {
+            const relatedPosts = await fetchRelatedPosts(baseUrl, auth, title, 3)
+            if (relatedPosts.length > 0) {
+                const relatedPostsHtml = generateRelatedPostsHTML(relatedPosts)
+                finalContent = finalContent + relatedPostsHtml
+                console.log(`[Publish] Added ${relatedPosts.length} related posts to content`)
+            }
+        } catch (error) {
+            console.error("Failed to add related posts, continuing without:", error)
         }
 
         const postData: WordPressPostData = {
