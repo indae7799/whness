@@ -64,14 +64,20 @@ INPUT DATA:
 - Content: The user will provide the H1, Intro, and First H2 of a blog post.
 
 GUIDELINES:
-1. **IMAGE PROMPT (CRITICAL: AVOID REPETITION)**:
-   - **PROBLEM**: We have too many "cluttered desk", "documents on table", and "laptop with coffee" images.
-   - **SOLUTION**: You MUST generate diverse scenes.
-   - **Dynamic Settings**: Use specific locations (NYC Street, Cozy Living Room, Park Bench, Airport Gate, Hospital Waiting Room, Modern Kitchen, Cafe Window).
-   - **Human Focus**: Focus on the *person* and their *emotion* (relief, stress, joy, contemplation), not just objects.
-   - **Forbidden**: DO NOT generate a "messy desk with papers" unless the text explicitly demands it. Avoid generic stock photo look.
-   - **Style**: ALLOW ALL STYLES (Photorealistic, Cinematic, 3D, Painting, Illustration) **EXCEPT CARTOON**.
-   - **Format**: "[Subject Description with specific location/action], [Lighting/Mood], [Style/Camera] --ar 16:9 --v 6.0"
+1. **IMAGE PROMPT (EXTREME VARIETY REQUIRED)**:
+   - **CRITICAL ISSUE**: The AI keeps generating "hands writing on a desk". **THIS IS BANNED**.
+   - **BANNED CONCEPTS**: NO hands writing, NO holding pens, NO messy desks, NO piles of paper, NO "art director", NO "proofs".
+   - **REQUIRED APPROACH**:
+     - **Scene-Based**: Show the *place* or *situation*, not the desk.
+     - **Lifestyle**: Show people *living the outcome* (e.g., walking in a park, entering a building, talking to a doctor).
+     - **Metaphor**: Use abstract concepts if the topic is dry (e.g., a path in a forest for "guidance").
+   - **Style**: ALLOW ALL STYLES (Cinematic, Photorealistic, 3D Render, Oil Painting, Matrix style) **EXCEPT CARTOON**.
+   - **Format**: "[Scene Description], [Lighting], [Camera/Style] --ar 16:9 --v 6.0"
+
+   **EXAMPLES (DO NOT COPY, JUST INSPIRE)**:
+   - *Topic: Insurance* -> "A worried young couple looking at a laptop in a modern sunlit kitchen, cozy atmosphere, cinematic lighting --ar 16:9 --v 6.0"
+   - *Topic: Moving* -> "Wide shot of a moving truck on a florida highway with palm trees at sunset, warm golden hour light, architectural photography --ar 16:9 --v 6.0"
+   - *Topic: Health* -> "Close up of an elderly woman smiling peacefully in a garden, soft bokeh background, portrait photography, 85mm lens --ar 16:9 --v 6.0"
 
 2. **ALT TEXT (MOST IMPORTANT)**:
    - **Priority**: This is the most critical part. 
@@ -86,10 +92,11 @@ You must return STRICT JSON only. No markdown code blocks.
   "altText": "your seo optimized alt text here..."
 }`;
 
-        const userPrompt = `Here is the blog content structure:\n\n${analysisText}`;
+        const userPrompt = `Here is the blog content structure:\n\n${analysisText}\n\nCRITICAL INSTRUCTION: DO NOT GENERATE A DESK OR HANDS WRITING. GENERATE A SCENE/PLACE.`;
 
-        // Using FREE Google GenAI
-        const rawResponse = await callGoogleGenAI(systemPrompt, userPrompt);
+        // Using FREE Google GenAI with High Temperature for creativity
+        // Passing undefined for modelId to use default, 0.9 for temperature
+        const rawResponse = await callGoogleGenAI(systemPrompt, userPrompt, undefined, 0.9);
 
         // Clean response if it contains markdown code blocks
         const cleanedResponse = rawResponse.replace(/```json/g, '').replace(/```/g, '').trim();
